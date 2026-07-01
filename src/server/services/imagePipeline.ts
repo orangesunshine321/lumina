@@ -1,0 +1,74 @@
+import sharp from "sharp";
+import exifr from "exifr";
+import { rgbaToThumbHash } from "thumbhash";
+import { derivedPath, ensurePhotoDerivedDir, type DerivedVariant } from "../lib/storage.ts";
+
+const DERIVATIVE_SPECS: Record<DerivedVariant, { size: number; quality: number }> = {
+  thumb: { size: 480, quality: 80 },
+  thumb2x: { size: 960, quality: 80 },
+  preview: { size: 1600, quality: 85 },
+  preview2x: { size: 2400, quality: 85 },
+};
+
+export interface ProcessedPhoto {
+  width: number;
+  height: number;
+  thumbhash: string;
+  capturedAt: Date | null;
+}
+
+/** Generates the four WebP derivatives, a ThumbHash placeholder, and reads
+ * EXIF capture time for one original JPEG. Throws on genuine failure (e.g. a
+ * corrupt file) so the caller can mark the job failed and retry. */
+export async function processPhoto(
+  originalPath: string,
+  galleryId: string,
+  photoId: string,
+): Promise<ProcessedPhoto> {
+  await ensurePhotoDerivedDir(galleryId, photoId);
+
+  const meta = await sharp(originalPath).metadata();
+  const orientation = meta.orientation ?? 1;
+  const swapped = orientation >= 5 && orientation <= 8;
+  const width = (swapped ? meta.height : meta.width) ?? 0;
+  const height = (swapped ? meta.width : meta.height) ?? 0;
+
+  await Promise.all(
+    (Object.keys(DERIVATIVE_SPECS) as DerivedVariant[]).map(async (variant) => {
+      const { size, quality } = DERIVATIVE_SPECS[variant];
+      await sharp(originalPath)
+        .rotate() // auto-orient from EXIF, then strip the Orientation tag
+        .resize({ width: size, height: size, fit: "inside", withoutEnlargement: true })
+        .webp({ quality })
+        .toFile(derivedPath(galleryId, photoId, variant));
+    }),
+  );
+
+  const thumbhash = await computeThumbHash(originalPath);
+  const capturedAt = await readCapturedAt(originalPath);
+
+  return { width, height, thumbhash, capturedAt };
+}
+
+async function computeThumbHash(originalPath: string): Promise<string> {
+  const { data, info } = await sharp(originalPath)
+    .rotate()
+    .resize({ width: 100, height: 100, fit: "inside", withoutEnlargement: true })
+    .raw()
+    .ensureAlpha()
+    .toBuffer({ resolveWithObject: true });
+
+  const hash = rgbaToThumbHash(info.width, info.height, data);
+  return Buffer.from(hash).toString("base64");
+}
+
+async function readCapturedAt(originalPath: string): Promise<Date | null> {
+  try {
+    const exif = await exifr.parse(originalPath, { pick: ["DateTimeOriginal"] });
+    const value = exif?.DateTimeOriginal;
+    if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+    return null;
+  } catch {
+    return null;
+  }
+}

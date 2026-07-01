@@ -1,0 +1,48 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      # Loopback-only: your reverse proxy (Caddy/Nginx/Cloudflare Tunnel) is
+      # the sole public entry point and terminates TLS. If your reverse proxy
+      # runs in a different container/network, drop the 127.0.0.1 prefix.
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./data:/data # THE ONLY persistent state: db, originals, derivatives, upload staging, backups
+    environment:
+      - DATABASE_PATH=/data/db/app.sqlite
+      - BACKUPS_DIR=/data/db/backups
+      - PHOTOS_PATH=/data/photos
+      - "SESSION_SECRET=${SESSION_SECRET:?SESSION_SECRET is required, run: openssl rand -hex 32}"
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-http://localhost:3000}
+      - TRUST_PROXY=true
+      - UPLOAD_CONCURRENCY=${UPLOAD_CONCURRENCY:-4}
+      - NODE_ENV=production
+      - PORT=3000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  # Optional — only include this if you don't already run a reverse proxy on
+  # your NAS/home server. Uncomment, add a Caddyfile alongside this compose
+  # file, and remove the 127.0.0.1 prefix from the app service's port above.
+  #
+  # caddy:
+  #   image: caddy:2
+  #   restart: unless-stopped
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./Caddyfile:/etc/caddy/Caddyfile
+  #     - caddy_data:/data
+  #     - caddy_config:/config
+  #   depends_on:
+  #     - app
+  #
+  # volumes:
+  #   caddy_data:
+  #   caddy_config:

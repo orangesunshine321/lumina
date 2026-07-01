@@ -1,0 +1,191 @@
+import type { FastifyInstance } from "fastify";
+import { and, asc, eq, gt } from "drizzle-orm";
+import { db, schema } from "../../db/client.ts";
+import {
+  hasGalleryAccess,
+  requireGalleryAccess,
+  resolveGalleryBySlug,
+} from "../../services/photoAccess.ts";
+import {
+  GALLERY_ACCESS_TTL_SECONDS,
+  galleryAccessCookieName,
+  hashPassword,
+  issueGalleryAccessToken,
+  verifyPassword,
+} from "../../services/auth.ts";
+import { checkRateLimit, recordAttempt } from "../../services/rateLimiter.ts";
+import { ensureClientToken, getClientIp } from "../../lib/http.ts";
+import { config } from "../../config.ts";
+
+const DEFAULT_PAGE_SIZE = 180;
+
+export async function publicGalleryRoutes(app: FastifyInstance) {
+  // Landing metadata — intentionally public. Its whole purpose is to tell the
+  // client whether a password is needed; the slug itself (not this endpoint)
+  // is the actual secret, so revealing exists-or-not here is fine. This is
+  // NOT the brute-force-sensitive endpoint — that's /unlock below.
+  app.get<{ Params: { slug: string } }>("/api/gallery/:slug", async (request, reply) => {
+    const gallery = await resolveGalleryBySlug(request.params.slug);
+    if (!gallery) return reply.code(404).send({ error: "not_found" });
+
+    ensureClientToken(request, reply);
+
+    return {
+      slug: gallery.slug,
+      title: gallery.title,
+      requiresPassword: Boolean(gallery.passwordHash),
+      hasAccess: await hasGalleryAccess(request, gallery),
+    };
+  });
+
+  app.post<{ Params: { slug: string }; Body: { password: string } }>(
+    "/api/gallery/:slug/unlock",
+    {
+      schema: {
+        body: {
+          type: "object",
+          required: ["password"],
+          properties: { password: { type: "string", maxLength: 512 } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const gallery = await resolveGalleryBySlug(request.params.slug);
+      const ip = getClientIp(request);
+
+      const rateLimit = await checkRateLimit({ scope: "gallery_unlock", galleryId: gallery?.id, ip });
+      if (!rateLimit.allowed) {
+        reply.header("Retry-After", String(rateLimit.retryAfterSeconds));
+        return reply
+          .code(429)
+          .send({ error: "too_many_attempts", retryAfterSeconds: rateLimit.retryAfterSeconds });
+      }
+
+      const { password } = request.body;
+
+      // Always run a verify (against a dummy hash if the gallery doesn't
+      // exist or has no password) so response timing doesn't leak whether the
+      // slug or password guess was right. A passwordless gallery has nothing
+      // to verify — that's treated as an immediate success below instead.
+      let ok: boolean;
+      if (gallery && gallery.passwordHash) {
+        ok = await verifyPassword(gallery.passwordHash, password);
+      } else {
+        await verifyPassword(DUMMY_HASH, password);
+        ok = Boolean(gallery && !gallery.passwordHash);
+      }
+
+      await recordAttempt({ scope: "gallery_unlock", galleryId: gallery?.id, ip, success: ok });
+
+      if (!gallery || !ok) {
+        return reply.code(401).send({ error: "invalid_credentials" });
+      }
+
+      const token = await issueGalleryAccessToken(gallery.id, gallery.passwordVersion);
+      reply.setCookie(galleryAccessCookieName(gallery.id), token, {
+        httpOnly: true,
+        secure: config.isProduction,
+        sameSite: "lax",
+        path: "/",
+        maxAge: GALLERY_ACCESS_TTL_SECONDS,
+      });
+      ensureClientToken(request, reply);
+
+      return { ok: true };
+    },
+  );
+
+  app.get<{ Params: { slug: string }; Querystring: { cursor?: string; limit?: string } }>(
+    "/api/gallery/:slug/photos",
+    { preHandler: requireGalleryAccess },
+    async (request, reply) => {
+      const gallery = request.gallery!;
+      const limit = Math.min(Number(request.query.limit ?? DEFAULT_PAGE_SIZE) || DEFAULT_PAGE_SIZE, 500);
+      const cursor = request.query.cursor ? Number(request.query.cursor) : undefined;
+
+      const rows = await db
+        .select({ photo: schema.photos, favoriteId: schema.favorites.id })
+        .from(schema.photos)
+        .leftJoin(
+          schema.favorites,
+          and(eq(schema.favorites.galleryId, schema.photos.galleryId), eq(schema.favorites.photoId, schema.photos.id)),
+        )
+        .where(
+          cursor === undefined
+            ? and(eq(schema.photos.galleryId, gallery.id), eq(schema.photos.status, "ready"))
+            : and(
+                eq(schema.photos.galleryId, gallery.id),
+                eq(schema.photos.status, "ready"),
+                gt(schema.photos.sortIndex, cursor),
+              ),
+        )
+        .orderBy(asc(schema.photos.sortIndex))
+        .limit(limit);
+
+      const photos = rows.map(({ photo, favoriteId }) => toPhotoDTO(photo, Boolean(favoriteId)));
+      const nextCursor = photos.length === limit ? String(rows[rows.length - 1]!.photo.sortIndex) : null;
+
+      return { photos, nextCursor };
+    },
+  );
+
+  app.post<{ Params: { slug: string; photoId: string } }>(
+    "/api/gallery/:slug/photos/:photoId/favorite",
+    { preHandler: requireGalleryAccess },
+    async (request, reply) => {
+      const gallery = request.gallery!;
+      const { photoId } = request.params;
+
+      const [photo] = await db
+        .select({ id: schema.photos.id })
+        .from(schema.photos)
+        .where(and(eq(schema.photos.id, photoId), eq(schema.photos.galleryId, gallery.id)))
+        .limit(1);
+      if (!photo) return reply.code(404).send({ error: "not_found" });
+
+      const [existing] = await db
+        .select({ id: schema.favorites.id })
+        .from(schema.favorites)
+        .where(and(eq(schema.favorites.galleryId, gallery.id), eq(schema.favorites.photoId, photoId)))
+        .limit(1);
+
+      if (existing) {
+        await db.delete(schema.favorites).where(eq(schema.favorites.id, existing.id));
+        return { favorited: false };
+      }
+
+      await db.insert(schema.favorites).values({
+        galleryId: gallery.id,
+        photoId,
+        toggledByClientToken: request.clientToken ?? "unknown",
+      });
+      return { favorited: true };
+    },
+  );
+}
+
+function toPhotoDTO(photo: typeof schema.photos.$inferSelect, favorited: boolean) {
+  return {
+    id: photo.id,
+    originalFilename: photo.originalFilename,
+    baseFilename: photo.baseFilename,
+    width: photo.width,
+    height: photo.height,
+    thumbhash: photo.thumbhash,
+    status: photo.status,
+    sortIndex: photo.sortIndex,
+    favorited,
+    urls: {
+      thumb: `/api/photos/${photo.id}/thumb`,
+      thumb2x: `/api/photos/${photo.id}/thumb2x`,
+      preview: `/api/photos/${photo.id}/preview`,
+      preview2x: `/api/photos/${photo.id}/preview2x`,
+      original: `/api/photos/${photo.id}/original`,
+    },
+  };
+}
+
+// A real Argon2id hash (computed once at boot) used to force the same
+// expensive verify computation whether or not the gallery/password guess was
+// right, so response timing doesn't leak which case it was.
+const DUMMY_HASH = await hashPassword(`dummy-${Math.random()}`);
