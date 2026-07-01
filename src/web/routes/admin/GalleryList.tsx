@@ -1,8 +1,8 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../../lib/api.ts";
-import type { GalleryDTO } from "../../lib/types.ts";
+import { photoUrl, type GalleryDTO } from "../../lib/types.ts";
 
 export function GalleryList() {
   const [creating, setCreating] = useState(false);
@@ -64,18 +64,28 @@ function GalleryCard({ gallery }: { gallery: GalleryDTO }) {
       to={`/admin/galleries/${gallery.id}`}
       className="group flex flex-col overflow-hidden rounded-2xl border border-ink-100 bg-white shadow-sm transition-shadow hover:shadow-md"
     >
-      <div className="relative flex aspect-4/3 items-center justify-center bg-gradient-to-br from-ink-100 to-ink-50">
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          className="h-10 w-10 text-ink-200"
-        >
-          <rect x="3" y="3" width="18" height="18" rx="2" />
-          <circle cx="8.5" cy="8.5" r="1.5" />
-          <path d="M21 15l-5-5L5 21" />
-        </svg>
+      <div className="relative flex aspect-4/3 items-center justify-center overflow-hidden bg-gradient-to-br from-ink-100 to-ink-50">
+        {gallery.coverPhotoId ? (
+          <img
+            src={photoUrl(gallery.coverPhotoId, "thumb")}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+          />
+        ) : (
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            className="h-10 w-10 text-ink-200"
+          >
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <circle cx="8.5" cy="8.5" r="1.5" />
+            <path d="M21 15l-5-5L5 21" />
+          </svg>
+        )}
         {gallery.hasPassword && (
           <span className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-ink-600 shadow-sm">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" className="h-3.5 w-3.5">
@@ -102,6 +112,14 @@ function CreateGalleryDialog({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
   const createGallery = useMutation({
     mutationFn: (title: string) => api.post<GalleryDTO>("/api/admin/galleries", { title }),
     onSuccess: (gallery) => {
@@ -126,6 +144,9 @@ function CreateGalleryDialog({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-20 flex items-center justify-center bg-ink-950/40 px-4" onClick={onClose}>
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="New gallery"
         className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >

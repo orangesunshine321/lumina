@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
+import { useInfiniteQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { api } from "../../../lib/api.ts";
 import { photoUrl, type PhotoDTO, type PhotoListResponse } from "../../../lib/types.ts";
 
@@ -12,37 +12,83 @@ interface ProgressEvent {
   thumbhash?: string;
 }
 
+const PAGE_SIZE = 200;
+const UNKNOWN_PHOTO_INVALIDATE_THROTTLE_MS = 2000;
+
 export function AdminPhotoGrid({ galleryId }: { galleryId: string }) {
   const queryClient = useQueryClient();
   const queryKey = ["admin-gallery-photos", galleryId];
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  const { data, isLoading, isError } = useQuery({
+  const query = useInfiniteQuery({
     queryKey,
-    queryFn: () => api.get<PhotoListResponse>(`/api/admin/galleries/${galleryId}/photos?limit=500`),
+    queryFn: ({ pageParam }) => {
+      const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
+      if (pageParam) params.set("cursor", pageParam);
+      return api.get<PhotoListResponse>(`/api/admin/galleries/${galleryId}/photos?${params.toString()}`);
+    },
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
   });
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && query.hasNextPage && !query.isFetchingNextPage) {
+          query.fetchNextPage();
+        }
+      },
+      { rootMargin: "600px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [query.hasNextPage, query.isFetchingNextPage, query.fetchNextPage]);
 
   useEffect(() => {
     const source = new EventSource(`/api/admin/galleries/${galleryId}/photos/stream`, {
       withCredentials: true,
     });
 
+    // Events for photos not yet in any cached page (uploaded moments ago, or
+    // from another tab) can't be patched in place — fall back to one throttled
+    // refetch instead of dropping them and leaving tiles stuck on "Queued…".
+    let lastUnknownInvalidateAt = 0;
+
     source.onmessage = (event) => {
       const payload: ProgressEvent = JSON.parse(event.data);
-      queryClient.setQueryData<PhotoListResponse>(queryKey, (old) => {
+      const key = ["admin-gallery-photos", galleryId];
+      const data = queryClient.getQueryData<InfiniteData<PhotoListResponse>>(key);
+      const known = data?.pages.some((page) => page.photos.some((p) => p.id === payload.photoId));
+
+      if (!known) {
+        const now = Date.now();
+        if (now - lastUnknownInvalidateAt >= UNKNOWN_PHOTO_INVALIDATE_THROTTLE_MS) {
+          lastUnknownInvalidateAt = now;
+          queryClient.invalidateQueries({ queryKey: key });
+        }
+        return;
+      }
+
+      queryClient.setQueryData<InfiniteData<PhotoListResponse>>(key, (old) => {
         if (!old) return old;
         return {
           ...old,
-          photos: old.photos.map((photo) =>
-            photo.id === payload.photoId
-              ? {
-                  ...photo,
-                  status: payload.status,
-                  width: payload.width ?? photo.width,
-                  height: payload.height ?? photo.height,
-                  thumbhash: payload.thumbhash ?? photo.thumbhash,
-                }
-              : photo,
-          ),
+          pages: old.pages.map((page) => ({
+            ...page,
+            photos: page.photos.map((photo) =>
+              photo.id === payload.photoId
+                ? {
+                    ...photo,
+                    status: payload.status,
+                    width: payload.width ?? photo.width,
+                    height: payload.height ?? photo.height,
+                    thumbhash: payload.thumbhash ?? photo.thumbhash,
+                  }
+                : photo,
+            ),
+          })),
         };
       });
     };
@@ -51,7 +97,7 @@ export function AdminPhotoGrid({ galleryId }: { galleryId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [galleryId]);
 
-  if (isLoading) {
+  if (query.isLoading) {
     return (
       <div className="flex justify-center py-16">
         <div className="h-6 w-6 animate-spin rounded-full border-2 border-ink-200 border-t-ink-900" />
@@ -59,7 +105,7 @@ export function AdminPhotoGrid({ galleryId }: { galleryId: string }) {
     );
   }
 
-  if (isError) {
+  if (query.isError) {
     return (
       <div className="flex flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-ink-200 py-16 text-center">
         <p className="text-sm font-medium text-ink-900">Couldn&apos;t load photos</p>
@@ -68,7 +114,7 @@ export function AdminPhotoGrid({ galleryId }: { galleryId: string }) {
     );
   }
 
-  const photos = data?.photos ?? [];
+  const photos = query.data?.pages.flatMap((page) => page.photos) ?? [];
 
   if (photos.length === 0) {
     return (
@@ -80,11 +126,19 @@ export function AdminPhotoGrid({ galleryId }: { galleryId: string }) {
   }
 
   return (
-    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
-      {photos.map((photo) => (
-        <PhotoTile key={photo.id} photo={photo} />
-      ))}
-    </div>
+    <>
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
+        {photos.map((photo) => (
+          <PhotoTile key={photo.id} photo={photo} />
+        ))}
+      </div>
+      <div ref={sentinelRef} className="h-1" />
+      {query.isFetchingNextPage && (
+        <div className="flex justify-center py-4">
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-ink-200 border-t-ink-900" />
+        </div>
+      )}
+    </>
   );
 }
 

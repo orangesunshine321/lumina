@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../../lib/api.ts";
@@ -15,6 +16,11 @@ export function GalleryApp() {
     queryFn: () => api.get<GalleryPublicDTO>(`/api/gallery/${slug}`),
     retry: false,
   });
+
+  const galleryTitle = meta.data?.title;
+  useEffect(() => {
+    if (galleryTitle) document.title = galleryTitle;
+  }, [galleryTitle]);
 
   if (meta.isLoading) {
     return (

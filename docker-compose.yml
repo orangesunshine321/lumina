@@ -2,6 +2,20 @@ services:
   app:
     build: .
     restart: unless-stopped
+    # Proper PID-1 signal handling so `docker stop` shuts the server down
+    # gracefully instead of hard-killing it after 10 seconds.
+    init: true
+    # pino logs every request to stdout; without rotation, Docker's default
+    # json-file driver grows unbounded on the host disk.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # On low-RAM hardware (e.g. a 2GB NAS), uncomment to bound the container —
+    # concurrent image processing is the main consumer; lower
+    # UPLOAD_CONCURRENCY below if you hit this limit during big uploads.
+    # mem_limit: 1g
     ports:
       # Loopback-only: your reverse proxy (Caddy/Nginx/Cloudflare Tunnel) is
       # the sole public entry point and terminates TLS. If your reverse proxy

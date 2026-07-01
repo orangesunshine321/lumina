@@ -83,9 +83,12 @@ export async function exportRoutes(app: FastifyInstance) {
       });
       archive.pipe(reply.raw);
 
+      // Different photos can share an original filename (same camera, two
+      // cards); identical zip entry names would silently overwrite on extract.
+      const usedNames = new Set<string>();
       for (const photo of photos) {
         archive.file(originalPath(photo.galleryId, photo.id, photo.fileExt), {
-          name: photo.originalFilename,
+          name: uniqueEntryName(photo.originalFilename, usedNames),
         });
       }
 
@@ -97,6 +100,23 @@ export async function exportRoutes(app: FastifyInstance) {
 async function findGallery(id: string) {
   const [gallery] = await db.select().from(schema.galleries).where(eq(schema.galleries.id, id)).limit(1);
   return gallery ?? null;
+}
+
+function uniqueEntryName(filename: string, used: Set<string>): string {
+  if (!used.has(filename)) {
+    used.add(filename);
+    return filename;
+  }
+  const lastDot = filename.lastIndexOf(".");
+  const stem = lastDot > 0 ? filename.slice(0, lastDot) : filename;
+  const ext = lastDot > 0 ? filename.slice(lastDot) : "";
+  for (let n = 2; ; n++) {
+    const candidate = `${stem} (${n})${ext}`;
+    if (!used.has(candidate)) {
+      used.add(candidate);
+      return candidate;
+    }
+  }
 }
 
 function slugify(title: string): string {

@@ -70,17 +70,17 @@ export async function photoRoutes(app: FastifyInstance) {
 
       const range = request.headers.range;
       if (range) {
-        const match = /^bytes=(\d*)-(\d*)$/.exec(range);
-        if (match) {
-          const [, startStr, endStr] = match;
-          const start = startStr ? Number(startStr) : 0;
-          const end = endStr ? Number(endStr) : fileStat.size - 1;
-          if (start <= end && end < fileStat.size) {
-            reply.code(206);
-            reply.header("Content-Range", `bytes ${start}-${end}/${fileStat.size}`);
-            reply.header("Content-Length", end - start + 1);
-            return reply.send(createReadStream(filePath, { start, end }));
-          }
+        const parsed = parseRange(range, fileStat.size);
+        if (parsed === "invalid") {
+          reply.code(416);
+          reply.header("Content-Range", `bytes */${fileStat.size}`);
+          return reply.send();
+        }
+        if (parsed) {
+          reply.code(206);
+          reply.header("Content-Range", `bytes ${parsed.start}-${parsed.end}/${fileStat.size}`);
+          reply.header("Content-Length", parsed.end - parsed.start + 1);
+          return reply.send(createReadStream(filePath, { start: parsed.start, end: parsed.end }));
         }
       }
 
@@ -88,4 +88,32 @@ export async function photoRoutes(app: FastifyInstance) {
       return reply.send(createReadStream(filePath));
     },
   );
+}
+
+/** RFC 9110 single-range parsing, including suffix ranges (`bytes=-500` =
+ * last 500 bytes). Returns null for a malformed/unsupported header (serve the
+ * full 200) and "invalid" for a syntactically valid but unsatisfiable range
+ * (416) — resuming download managers depend on getting these right. */
+function parseRange(
+  header: string,
+  size: number,
+): { start: number; end: number } | null | "invalid" {
+  const match = /^bytes=(\d*)-(\d*)$/.exec(header);
+  if (!match) return null;
+  const [, startStr, endStr] = match;
+
+  if (!startStr && !endStr) return null;
+
+  if (!startStr) {
+    // Suffix range: last N bytes.
+    const suffixLength = Number(endStr);
+    if (suffixLength === 0) return "invalid";
+    const start = Math.max(0, size - suffixLength);
+    return { start, end: size - 1 };
+  }
+
+  const start = Number(startStr);
+  const end = endStr ? Math.min(Number(endStr), size - 1) : size - 1;
+  if (start >= size || start > end) return "invalid";
+  return { start, end };
 }

@@ -14,13 +14,23 @@ interface AlbumPhoto extends Photo {
   urls: PhotoDTO["urls"];
 }
 
+// Decoding is ~1ms of base64 + PNG-encode work per placeholder, and this runs
+// inside render for every visible photo — memoize so a favorite toggle (which
+// re-renders the whole album) doesn't redo thousands of decodes on a phone.
+const thumbhashCache = new Map<string, string | null>();
+
 function decodeThumbhash(base64: string): string | null {
+  const cached = thumbhashCache.get(base64);
+  if (cached !== undefined) return cached;
+  let dataUrl: string | null;
   try {
     const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-    return thumbHashToDataURL(bytes);
+    dataUrl = thumbHashToDataURL(bytes);
   } catch {
-    return null;
+    dataUrl = null;
   }
+  thumbhashCache.set(base64, dataUrl);
+  return dataUrl;
 }
 
 export function PhotoGrid({ slug }: { slug: string }) {
@@ -203,7 +213,17 @@ export function PhotoGrid({ slug }: { slug: string }) {
             open
             close={() => setLightboxIndex(null)}
             index={lightboxIndex}
-            on={{ view: ({ index }) => setLightboxIndex(index) }}
+            on={{
+              view: ({ index }) => {
+                setLightboxIndex(index);
+                // Slides only exist for pages loaded so far — keep fetching as
+                // the client swipes toward the end so the lightbox never hits
+                // a wall at a 180-photo page boundary.
+                if (index >= photos.length - 5 && query.hasNextPage && !query.isFetchingNextPage) {
+                  query.fetchNextPage();
+                }
+              },
+            }}
             slides={photos.map((p) => ({
               src: p.urls.preview,
               srcSet: [{ src: p.urls.preview2x, width: (p.width ?? 800) * 2, height: (p.height ?? 600) * 2 }],

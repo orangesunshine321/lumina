@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { db, schema } from "../db/client.ts";
 import { config } from "../config.ts";
 import { originalPath } from "../lib/storage.ts";
@@ -96,12 +96,20 @@ async function processOne(photo: typeof schema.photos.$inferSelect): Promise<voi
       })
       .where(eq(schema.photos.id, photo.id));
 
+    // First photo to finish processing becomes the gallery cover (admin
+    // gallery cards render it); the photographer can't pick one yet, so
+    // "first ready" is the sensible default.
+    await db
+      .update(schema.galleries)
+      .set({ coverPhotoId: photo.id })
+      .where(and(eq(schema.galleries.id, photo.galleryId), isNull(schema.galleries.coverPhotoId)));
+
     progressBus.emit("progress", {
       galleryId: photo.galleryId,
       photoId: photo.id,
       status: "ready",
-      width: result.width,
-      height: result.height,
+      width: result.width ?? undefined,
+      height: result.height ?? undefined,
       thumbhash: result.thumbhash,
     } satisfies PhotoProgressEvent);
   } catch (err) {

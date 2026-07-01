@@ -4,7 +4,7 @@ import { mkdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import type { FastifyInstance } from "fastify";
-import { and, asc, eq, gt, sql } from "drizzle-orm";
+import { and, asc, eq, gt, ne, sql } from "drizzle-orm";
 import sharp from "sharp";
 import { db, schema } from "../../db/client.ts";
 import { config } from "../../config.ts";
@@ -37,16 +37,40 @@ function toPhotoDTO(photo: typeof schema.photos.$inferSelect, favorited = false)
 export async function uploadRoutes(app: FastifyInstance) {
   app.post<{ Params: { id: string }; Body: { files: Array<{ filename: string; size: number }> } }>(
     "/api/admin/galleries/:id/uploads/check",
-    { preHandler: requireAdmin },
+    {
+      preHandler: requireAdmin,
+      schema: {
+        body: {
+          type: "object",
+          required: ["files"],
+          properties: {
+            files: {
+              type: "array",
+              maxItems: 5000,
+              items: {
+                type: "object",
+                required: ["filename", "size"],
+                properties: {
+                  filename: { type: "string", maxLength: 512 },
+                  size: { type: "integer", minimum: 0 },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
     async (request) => {
       const { id } = request.params;
       const { files } = request.body;
       if (!files?.length) return { existing: [] };
 
+      // Failed rows are deliberately NOT treated as existing: re-selecting the
+      // same folder is the recovery path for a photo that failed processing.
       const rows = await db
         .select({ filename: schema.photos.originalFilename, size: schema.photos.byteSize })
         .from(schema.photos)
-        .where(eq(schema.photos.galleryId, id));
+        .where(and(eq(schema.photos.galleryId, id), ne(schema.photos.status, "failed")));
 
       const known = new Set(rows.map((r) => `${r.filename}:${r.size}`));
       const existing = files
@@ -108,15 +132,12 @@ export async function uploadRoutes(app: FastifyInstance) {
       }
 
       const checksumSha256 = hash.digest("hex");
-      const [existingPhoto] = await db
-        .select()
-        .from(schema.photos)
-        .where(and(eq(schema.photos.galleryId, galleryId), eq(schema.photos.checksumSha256, checksumSha256)))
-        .limit(1);
+      const existingPhoto = await findByChecksum(galleryId, checksumSha256);
 
       if (existingPhoto) {
         await rm(tmpPath, { force: true });
-        return { duplicate: true, photo: toPhotoDTO(existingPhoto) };
+        const photo = await resetIfFailed(existingPhoto);
+        return { duplicate: true, photo: toPhotoDTO(photo) };
       }
 
       // Defense in depth: the browser normally sends just a basename, but
@@ -130,35 +151,51 @@ export async function uploadRoutes(app: FastifyInstance) {
 
       const photoId = generateId();
       await ensureGalleryDirs(galleryId);
-      await rename(tmpPath, originalPath(galleryId, photoId, fileExt));
+      const finalPath = originalPath(galleryId, photoId, fileExt);
+      await rename(tmpPath, finalPath);
 
-      const nextSortRows = await db
-        .select({ nextSort: sql<number>`coalesce(max(${schema.photos.sortIndex}), -1) + 1` })
-        .from(schema.photos)
-        .where(eq(schema.photos.galleryId, galleryId));
-      const nextSort = nextSortRows[0]?.nextSort ?? 0;
-
-      const [photo] = await db
-        .insert(schema.photos)
-        .values({
-          id: photoId,
-          galleryId,
-          originalFilename,
-          baseFilename,
-          fileExt,
-          byteSize,
-          checksumSha256,
-          status: "pending",
-          sortIndex: nextSort,
-        })
-        .returning();
+      let photo: typeof schema.photos.$inferSelect;
+      try {
+        // sortIndex is computed inside the INSERT itself: a separate
+        // SELECT MAX + INSERT pair has an await between them, and two of
+        // Uppy's concurrent uploads can interleave there and take the same
+        // index — which the gt(sortIndex, cursor) pagination would then
+        // silently skip past. One statement makes the assignment atomic.
+        const [inserted] = await db
+          .insert(schema.photos)
+          .values({
+            id: photoId,
+            galleryId,
+            originalFilename,
+            baseFilename,
+            fileExt,
+            byteSize,
+            checksumSha256,
+            status: "pending",
+            sortIndex: sql`(SELECT COALESCE(MAX(sort_index), -1) + 1 FROM photos WHERE gallery_id = ${galleryId})`,
+          })
+          .returning();
+        photo = inserted!;
+      } catch (err) {
+        // The file has already been moved into originals/ — never leave it
+        // orphaned, whatever the insert failure was.
+        await rm(finalPath, { force: true });
+        if (isUniqueConstraintError(err)) {
+          // Lost a race with a concurrent upload of identical bytes.
+          const winner = await findByChecksum(galleryId, checksumSha256);
+          if (winner) {
+            return { duplicate: true, photo: toPhotoDTO(await resetIfFailed(winner)) };
+          }
+        }
+        throw err;
+      }
 
       await db
         .update(schema.galleries)
         .set({ photoCount: sql`${schema.galleries.photoCount} + 1`, updatedAt: new Date() })
         .where(eq(schema.galleries.id, galleryId));
 
-      return toPhotoDTO(photo!);
+      return toPhotoDTO(photo);
     },
   );
 
@@ -220,6 +257,36 @@ export async function uploadRoutes(app: FastifyInstance) {
         reply.raw.end();
       });
     },
+  );
+}
+
+async function findByChecksum(galleryId: string, checksumSha256: string) {
+  const [photo] = await db
+    .select()
+    .from(schema.photos)
+    .where(and(eq(schema.photos.galleryId, galleryId), eq(schema.photos.checksumSha256, checksumSha256)))
+    .limit(1);
+  return photo ?? null;
+}
+
+/** Re-uploading a photo whose processing permanently failed is the recovery
+ * path for it — requeue instead of just reporting "duplicate". */
+async function resetIfFailed(photo: typeof schema.photos.$inferSelect) {
+  if (photo.status !== "failed") return photo;
+  const [updated] = await db
+    .update(schema.photos)
+    .set({ status: "pending", attempts: 0, lastError: null })
+    .where(eq(schema.photos.id, photo.id))
+    .returning();
+  return updated ?? photo;
+}
+
+function isUniqueConstraintError(err: unknown): boolean {
+  return (
+    err instanceof Error &&
+    "code" in err &&
+    typeof (err as { code?: string }).code === "string" &&
+    (err as { code: string }).code.startsWith("SQLITE_CONSTRAINT")
   );
 }
 

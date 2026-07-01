@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Route, Routes } from "react-router-dom";
 import { api, ApiError } from "../../lib/api.ts";
@@ -14,6 +15,10 @@ interface Me {
 
 export function AdminApp() {
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    document.title = "Pixset — Admin";
+  }, []);
 
   const setupStatus = useQuery({
     queryKey: ["setup-status"],

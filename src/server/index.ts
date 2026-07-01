@@ -4,14 +4,17 @@ import { startWorker } from "./services/worker.ts";
 import { cleanupExpiredAdminSessions } from "./services/auth.ts";
 import { cleanupOldAuthAttempts } from "./services/rateLimiter.ts";
 import { runDatabaseBackup } from "./services/backup.ts";
+import { cleanupStaleUploadTmp } from "./lib/storage.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function startMaintenanceSweep(appInstance: Awaited<ReturnType<typeof buildApp>>) {
   const sweep = () =>
-    Promise.all([cleanupExpiredAdminSessions(), cleanupOldAuthAttempts()]).catch((err) =>
-      appInstance.log.error(err, "maintenance sweep failed"),
-    );
+    Promise.all([
+      cleanupExpiredAdminSessions(),
+      cleanupOldAuthAttempts(),
+      cleanupStaleUploadTmp(),
+    ]).catch((err) => appInstance.log.error(err, "maintenance sweep failed"));
   void sweep();
   setInterval(sweep, DAY_MS).unref();
 }
@@ -41,8 +44,13 @@ try {
 }
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
-  process.on(signal, async () => {
-    await app.close();
-    process.exit(0);
+  process.on(signal, () => {
+    // Never let shutdown hang past Docker's SIGKILL grace period — if close
+    // stalls (a stuck connection, a wedged job), exit anyway after 5s.
+    setTimeout(() => process.exit(0), 5000).unref();
+    app.close().then(
+      () => process.exit(0),
+      () => process.exit(1),
+    );
   });
 }

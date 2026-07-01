@@ -53,22 +53,33 @@ export async function createAdminSession(adminId: string, userAgent: string | un
   return { rawToken, expiresAt };
 }
 
+/** Only rewrite lastSeenAt/expiresAt when the last touch is at least this old —
+ * this function runs for every photo-byte request the admin grid makes, and an
+ * unconditional UPDATE would mean hundreds of pointless writes per page view. */
+const SESSION_TOUCH_INTERVAL_MS = 15 * 60 * 1000;
+
 export async function verifyAdminSession(rawToken: string | undefined) {
   if (!rawToken) return null;
   const id = sha256Hex(rawToken);
   const now = new Date();
-  const [session] = await db
-    .select()
+  // Joined against admin_users so a session can never outlive its account —
+  // the documented password-reset recovery deletes the admin row from the
+  // sqlite3 CLI, where foreign_keys is OFF and the cascade doesn't fire.
+  const [row] = await db
+    .select({ session: schema.adminSessions })
     .from(schema.adminSessions)
+    .innerJoin(schema.adminUsers, eq(schema.adminUsers.id, schema.adminSessions.adminId))
     .where(and(eq(schema.adminSessions.id, id), gt(schema.adminSessions.expiresAt, now)))
     .limit(1);
-  if (!session) return null;
+  if (!row) return null;
+  const session = row.session;
 
-  // Sliding expiry: touch lastSeenAt/expiresAt on use.
-  await db
-    .update(schema.adminSessions)
-    .set({ lastSeenAt: now, expiresAt: new Date(Date.now() + ADMIN_SESSION_TTL_MS) })
-    .where(eq(schema.adminSessions.id, id));
+  if (now.getTime() - session.lastSeenAt.getTime() > SESSION_TOUCH_INTERVAL_MS) {
+    await db
+      .update(schema.adminSessions)
+      .set({ lastSeenAt: now, expiresAt: new Date(now.getTime() + ADMIN_SESSION_TTL_MS) })
+      .where(eq(schema.adminSessions.id, id));
+  }
 
   return session;
 }

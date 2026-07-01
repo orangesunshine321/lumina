@@ -17,7 +17,9 @@ npm start                 # NODE_ENV=production tsx src/server/index.ts (runs th
 npm run typecheck          # tsc --noEmit across both src/server and src/web
 npm run db:generate         # drizzle-kit generate — diffs db/schema.ts against drizzle/ and writes a new migration
 npm run db:migrate           # tsx src/server/db/migrate.ts — applies pending migrations (also runs automatically on container boot)
-npm test                      # vitest run — no test files exist yet
+npm test                      # vitest run — integration + unit tests in src/server/__tests__/
+                              # (vitest.config.ts, not vite.config.ts, configures these: forks pool,
+                              #  per-file temp DATA_DIR set before dynamic-importing config/db)
 ```
 
 There is no server build/compile step. The server runs directly from TypeScript source via `tsx` in both dev and production (see "Runtime model" below) — only the frontend goes through a Vite build.
@@ -53,7 +55,7 @@ There's no separate jobs table or queue library (no BullMQ/pg-boss/Redis). `src/
 
 ### Storage layout
 
-`src/server/lib/storage.ts` centralizes all on-disk paths (originals, derived variants, per-gallery directories) — always use its helpers (`originalPath`, `derivedPath`, `ensureGalleryDirs`, `deleteGalleryFiles`) rather than constructing paths inline, so the layout stays consistent across the upload route, the image pipeline, the photo-serving route, and gallery deletion. Root paths come from `src/server/config.ts`, which reads `DATA_DIR`/`DATABASE_PATH`/`PHOTOS_PATH` env vars (see `docker-compose.yml` and `.env.example`).
+`src/server/lib/storage.ts` centralizes all on-disk paths (originals, derived variants, per-gallery directories) — always use its helpers (`originalPath`, `derivedPath`, `ensureGalleryDirs`, `deleteGalleryFiles`) rather than constructing paths inline, so the layout stays consistent across the upload route, the image pipeline, the photo-serving route, and gallery deletion. Root paths come from `src/server/config.ts`, which reads `DATA_DIR`/`DATABASE_PATH`/`PHOTOS_PATH` env vars (set in `docker-compose.yml`; `.env.example` only holds the operator-facing secrets/tuning knobs).
 
 ### Frontend: shared DTOs are the client-server contract
 

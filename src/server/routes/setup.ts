@@ -39,7 +39,21 @@ export async function setupRoutes(app: FastifyInstance) {
       const { email, password } = request.body;
       const passwordHash = await hashPassword(password);
       const id = generateId();
-      await db.insert(schema.adminUsers).values({ id, email: email.toLowerCase(), passwordHash });
+
+      // The exists-check above races: hashing takes ~100ms, and a second
+      // concurrent setup POST can pass the check during that window. The
+      // INSERT itself is guarded so only one request can ever win.
+      const now = Date.now();
+      const result = db.$client
+        .prepare(
+          `INSERT INTO admin_users (id, email, password_hash, created_at, updated_at)
+           SELECT ?, ?, ?, ?, ?
+           WHERE NOT EXISTS (SELECT 1 FROM admin_users)`,
+        )
+        .run(id, email.toLowerCase(), passwordHash, now, now);
+      if (result.changes === 0) {
+        return reply.code(403).send({ error: "setup_already_completed" });
+      }
 
       const { rawToken, expiresAt } = await createAdminSession(id, request.headers["user-agent"]);
       reply.setCookie(ADMIN_SESSION_COOKIE, rawToken, {

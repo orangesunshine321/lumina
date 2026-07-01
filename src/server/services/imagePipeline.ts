@@ -11,8 +11,8 @@ const DERIVATIVE_SPECS: Record<DerivedVariant, { size: number; quality: number }
 };
 
 export interface ProcessedPhoto {
-  width: number;
-  height: number;
+  width: number | null;
+  height: number | null;
   thumbhash: string;
   capturedAt: Date | null;
 }
@@ -30,8 +30,11 @@ export async function processPhoto(
   const meta = await sharp(originalPath).metadata();
   const orientation = meta.orientation ?? 1;
   const swapped = orientation >= 5 && orientation <= 8;
-  const width = (swapped ? meta.height : meta.width) ?? 0;
-  const height = (swapped ? meta.width : meta.height) ?? 0;
+  // null (not 0) when sharp can't report a dimension: the frontend's
+  // `?? fallback` guards catch null, but a 0 would flow into the justified-
+  // layout math as a zero-width photo and produce NaN row heights.
+  const width = (swapped ? meta.height : meta.width) || null;
+  const height = (swapped ? meta.width : meta.height) || null;
 
   await Promise.all(
     (Object.keys(DERIVATIVE_SPECS) as DerivedVariant[]).map(async (variant) => {

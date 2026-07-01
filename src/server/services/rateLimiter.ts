@@ -12,6 +12,13 @@ const PER_IP_LOOKBACK_ROWS = 50;
 const PER_GALLERY_THRESHOLD = 30; // coarse cap across all IPs, blunts distributed guessing
 const PER_GALLERY_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
+// Cross-IP cap for admin login. The per-IP backoff keys on X-Forwarded-For,
+// which is attacker-controlled if the app is ever exposed without a proxy —
+// this cap can't be dodged by rotating the header. Generous enough that a
+// single fumbling human never hits it.
+const ADMIN_GLOBAL_THRESHOLD = 100;
+const ADMIN_GLOBAL_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+
 export function hashIp(ip: string): string {
   return createHash("sha256").update(`${ip}:${config.sessionSecret}`).digest("hex");
 }
@@ -50,7 +57,35 @@ export async function checkRateLimit(params: {
     if (!perGalleryResult.allowed) return perGalleryResult;
   }
 
+  if (params.scope === "admin_login") {
+    const globalResult = await checkAdminGlobalCap(now);
+    if (!globalResult.allowed) return globalResult;
+  }
+
   return { allowed: true };
+}
+
+async function checkAdminGlobalCap(now: number): Promise<RateLimitCheck> {
+  const windowStart = new Date(now - ADMIN_GLOBAL_WINDOW_MS);
+  const recentFailures = await db
+    .select({ createdAt: schema.authAttempts.createdAt })
+    .from(schema.authAttempts)
+    .where(
+      and(
+        eq(schema.authAttempts.scope, "admin_login"),
+        eq(schema.authAttempts.success, false),
+        gte(schema.authAttempts.createdAt, windowStart),
+      ),
+    )
+    .orderBy(schema.authAttempts.createdAt);
+
+  if (recentFailures.length < ADMIN_GLOBAL_THRESHOLD) {
+    return { allowed: true };
+  }
+
+  const oldest = recentFailures[0]!.createdAt.getTime();
+  const unlocksAt = oldest + ADMIN_GLOBAL_WINDOW_MS;
+  return { allowed: false, retryAfterSeconds: Math.max(1, Math.ceil((unlocksAt - now) / 1000)) };
 }
 
 async function checkPerIpBackoff(

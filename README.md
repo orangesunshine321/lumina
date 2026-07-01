@@ -33,7 +33,8 @@ All configuration is environment variables, set in `.env` (read by `docker-compo
 |---|---|---|---|
 | `SESSION_SECRET` | Yes | — | `openssl rand -hex 32`. Signs gallery-access cookies. Changing it logs every client out of every gallery — keep it stable across restarts, and never commit it. |
 | `PUBLIC_BASE_URL` | Recommended | `http://localhost:3000` | The URL clients use to reach the app. Used to build absolute gallery links in the admin UI. |
-| `UPLOAD_CONCURRENCY` | No | `4` | How many photos process (thumbnail/preview generation) concurrently in the background. Lower it on a lower-core NAS. |
+| `UPLOAD_CONCURRENCY` | No | `4` | How many photos process (thumbnail/preview generation) concurrently in the background. Lower it on low-core or low-RAM hardware — concurrent image processing is the app's main memory consumer. |
+| `MAX_UPLOAD_FILE_SIZE_BYTES` | No | `52428800` (50MB) | Per-file upload size limit. |
 
 There's deliberately no `ADMIN_EMAIL`/`ADMIN_PASSWORD` env var — the admin account is created once, in-app, via the setup form on first boot. That route permanently disables itself the instant an admin account exists.
 
@@ -118,8 +119,11 @@ Database migrations run automatically on every container start — there's no se
 **Forgot the admin password.** There's no email-based reset flow (out of scope by design — this is a single-admin tool). Recovery is one SQL statement:
 
 ```bash
-docker compose exec app sh -c 'sqlite3 /data/db/app.sqlite "DELETE FROM admin_users;"'
+docker compose exec app sh -c 'sqlite3 /data/db/app.sqlite "DELETE FROM admin_sessions; DELETE FROM admin_users;"'
 ```
+
+(Both tables: the sqlite3 CLI doesn't enforce foreign keys by default, so deleting only
+the account would leave old logged-in browser sessions orphaned.)
 
 Reload the app — the one-time setup form reappears, ready to create a fresh admin account. (Existing galleries, photos, and favorites are untouched; only the admin login itself is reset.)
 

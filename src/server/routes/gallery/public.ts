@@ -154,11 +154,16 @@ export async function publicGalleryRoutes(app: FastifyInstance) {
         return { favorited: false };
       }
 
-      await db.insert(schema.favorites).values({
-        galleryId: gallery.id,
-        photoId,
-        toggledByClientToken: request.clientToken ?? "unknown",
-      });
+      // Two rapid taps can both pass the SELECT above; the unique index on
+      // (gallery_id, photo_id) makes the second insert a no-op, not a 500.
+      await db
+        .insert(schema.favorites)
+        .values({
+          galleryId: gallery.id,
+          photoId,
+          toggledByClientToken: request.clientToken ?? "unknown",
+        })
+        .onConflictDoNothing();
       return { favorited: true };
     },
   );

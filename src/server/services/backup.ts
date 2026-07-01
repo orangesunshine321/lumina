@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { sqlite } from "../db/client.ts";
 import { config } from "../config.ts";
@@ -22,11 +22,21 @@ export async function runDatabaseBackup(): Promise<void> {
   const dateStamp = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
   const destination = join(config.backupsDir, `${SNAPSHOT_PREFIX}${dateStamp}${SNAPSHOT_SUFFIX}`);
 
-  await sqlite.backup(destination);
-  await writeFile(
-    join(config.backupsDir, STATUS_FILE),
-    JSON.stringify({ lastBackupAt: new Date().toISOString() }),
-  );
+  // Write-then-rename so a crash mid-backup can never leave a truncated file
+  // sitting in retention looking like a valid snapshot.
+  const stagingPath = `${destination}.inprogress`;
+  try {
+    await sqlite.backup(stagingPath);
+    await rename(stagingPath, destination);
+  } catch (err) {
+    await rm(stagingPath, { force: true });
+    throw err;
+  }
+
+  const statusPath = join(config.backupsDir, STATUS_FILE);
+  const statusStaging = `${statusPath}.tmp`;
+  await writeFile(statusStaging, JSON.stringify({ lastBackupAt: new Date().toISOString() }));
+  await rename(statusStaging, statusPath);
 
   await pruneOldSnapshots();
 }

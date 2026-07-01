@@ -1,4 +1,4 @@
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, readdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { config } from "../config.ts";
 
@@ -47,4 +47,30 @@ export async function deleteGalleryFiles(galleryId: string): Promise<void> {
     rm(galleryOriginalsDir(galleryId), { recursive: true, force: true }),
     rm(galleryDerivedDir(galleryId), { recursive: true, force: true }),
   ]);
+}
+
+const TMP_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/** Removes upload-staging files orphaned by a crash mid-upload. Anything in
+ * tmp/ older than a day can't belong to a live request — normal uploads clean
+ * up after themselves on every handled failure path. */
+export async function cleanupStaleUploadTmp(): Promise<void> {
+  let entries: string[];
+  try {
+    entries = await readdir(config.uploadTmpDir);
+  } catch {
+    return; // dir doesn't exist yet — nothing to sweep
+  }
+  const cutoff = Date.now() - TMP_MAX_AGE_MS;
+  await Promise.all(
+    entries.map(async (name) => {
+      const path = join(config.uploadTmpDir, name);
+      try {
+        const info = await stat(path);
+        if (info.mtimeMs < cutoff) await rm(path, { force: true });
+      } catch {
+        // raced with a concurrent delete — fine
+      }
+    }),
+  );
 }

@@ -34,9 +34,11 @@ COPY package.json ./
 COPY drizzle ./drizzle
 COPY src/server ./src/server
 COPY --from=build /app/dist/web ./dist/web
+COPY docker-entrypoint.sh ./
+RUN chmod +x docker-entrypoint.sh
 
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD curl -f http://localhost:3000/api/health || exit 1
 
-CMD ["sh", "-c", "npm run db:migrate && npm start"]
+CMD ["./docker-entrypoint.sh"]
