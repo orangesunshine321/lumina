@@ -51,10 +51,20 @@ export function GalleryDetail() {
     navigate("/admin");
   }
 
-  const photosHeading =
-    data.favoriteCount > 0
-      ? `Photos (${data.photoCount} · ${data.favoriteCount} ${data.favoriteCount === 1 ? "favorite" : "favorites"})`
-      : `Photos (${data.photoCount})`;
+  const inFlight = data.statusCounts.pending + data.statusCounts.processing;
+  const photosHeading = (
+    <>
+      Photos ({data.photoCount}
+      {data.favoriteCount > 0 && (
+        <> · {data.favoriteCount} {data.favoriteCount === 1 ? "favorite" : "favorites"}</>
+      )}
+      {inFlight > 0 && <> · {inFlight} processing</>}
+      {data.statusCounts.failed > 0 && (
+        <span className="text-accent-500"> · {data.statusCounts.failed} failed</span>
+      )}
+      )
+    </>
+  );
 
   return (
     <div className="flex flex-col gap-8">
@@ -69,7 +79,9 @@ export function GalleryDetail() {
               <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </Link>
-          <h1 className="truncate text-xl font-semibold tracking-tight text-ink-900">{data.title}</h1>
+          <h1 className="truncate font-display text-2xl font-semibold tracking-tight text-ink-900">
+            {data.title}
+          </h1>
         </div>
 
         <ShareBar slug={data.slug} />
@@ -137,7 +149,7 @@ function ShareBar({ slug }: { slug: string }) {
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children }: { title: React.ReactNode; children: React.ReactNode }) {
   return (
     <section className="flex flex-col gap-4">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-400">{title}</h2>

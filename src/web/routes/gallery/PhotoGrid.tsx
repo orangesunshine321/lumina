@@ -41,12 +41,23 @@ function decodeThumbhash(base64: string): string | null {
   return dataUrl;
 }
 
-export function PhotoGrid({ slug, favoritesOnly }: { slug: string; favoritesOnly: boolean }) {
+export function PhotoGrid({
+  slug,
+  favoritesOnly,
+  allowDownloads,
+}: {
+  slug: string;
+  favoritesOnly: boolean;
+  allowDownloads: boolean;
+}) {
   const queryClient = useQueryClient();
   const queryKey = ["gallery-photos", slug, favoritesOnly ? "favorites" : "all"];
   const inactiveKey = ["gallery-photos", slug, favoritesOnly ? "all" : "favorites"];
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  // The ids that get the first-load entrance animation — captured exactly
+  // once, so pagination appends and favorite-toggle re-renders never replay it.
+  const staggerIdsRef = useRef<Set<string> | null>(null);
 
   const query = useInfiniteQuery({
     queryKey,
@@ -77,6 +88,10 @@ export function PhotoGrid({ slug, favoritesOnly }: { slug: string; favoritesOnly
       ),
     [query.data],
   );
+
+  if (staggerIdsRef.current === null && photos.length > 0) {
+    staggerIdsRef.current = new Set(photos.slice(0, 24).map((p) => p.id));
+  }
 
   useEffect(() => {
     const el = sentinelRef.current;
@@ -149,14 +164,19 @@ export function PhotoGrid({ slug, favoritesOnly }: { slug: string; favoritesOnly
     context: RenderImageContext<AlbumPhoto>,
   ) => {
     const placeholder = context.photo.thumbhash ? decodeThumbhash(context.photo.thumbhash) : null;
+    // Above-the-fold images shouldn't wait for the lazy loader — the first
+    // rows are what "fast" feels like on a fresh open.
+    const eager = context.index < 8;
+    const staggered = staggerIdsRef.current?.has(context.photo.id) ?? false;
     return (
       <div
-        className="pg-tile"
+        className={staggered ? "pg-tile pg-enter" : "pg-tile"}
         style={{
           position: "relative",
           width: props.style?.width,
           height: props.style?.height,
           overflow: "hidden",
+          ...(staggered ? { animationDelay: `${Math.min(context.index * 25, 300)}ms` } : {}),
         }}
       >
         {placeholder && (
@@ -170,6 +190,8 @@ export function PhotoGrid({ slug, favoritesOnly }: { slug: string; favoritesOnly
         <img
           {...props}
           className="pg-photo"
+          loading={eager ? "eager" : props.loading}
+          fetchPriority={eager ? "high" : undefined}
           onLoad={(e) => {
             e.currentTarget.style.opacity = "1";
           }}
@@ -311,6 +333,18 @@ export function PhotoGrid({ slug, favoritesOnly }: { slug: string; favoritesOnly
               {photos[lightboxIndex]?.favorited ? "Favorited" : "Favorite"}
             </span>
           </button>
+          {allowDownloads && photos[lightboxIndex] && (
+            <a
+              href={`${photos[lightboxIndex]!.urls.original}?download=1`}
+              download
+              aria-label="Download this photo"
+              className="tap-target on-dark fixed bottom-8 right-4 z-[10000] flex items-center justify-center rounded-full bg-ink-950/60 text-white backdrop-blur transition-transform active:scale-90"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
+                <path d="M12 3v12m0 0l-4-4m4 4l4-4M4 19h16" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </a>
+          )}
         </>
       )}
     </div>

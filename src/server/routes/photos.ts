@@ -24,7 +24,7 @@ const MIME_BY_EXT: Record<string, string> = {
  * than trusting that a valid-looking URL implies permission.
  */
 export async function photoRoutes(app: FastifyInstance) {
-  app.get<{ Params: { photoId: string; variant: Variant } }>(
+  app.get<{ Params: { photoId: string; variant: Variant }; Querystring: { download?: string } }>(
     "/api/photos/:photoId/:variant",
     async (request, reply) => {
       const { photoId, variant } = request.params;
@@ -47,8 +47,19 @@ export async function photoRoutes(app: FastifyInstance) {
       let filePath: string;
       let contentType: string;
       if (variant === "original") {
+        // Full-res originals for clients are opt-in per gallery — browsing
+        // only ever needs the derived previews. Admins always have access.
+        if (!isAdmin && !gallery.allowDownloads) {
+          return reply.code(403).send({ error: "downloads_disabled" });
+        }
         filePath = originalPath(photo.galleryId, photo.id, photo.fileExt);
         contentType = MIME_BY_EXT[photo.fileExt.toLowerCase()] ?? "application/octet-stream";
+        if (request.query.download === "1") {
+          reply.header(
+            "Content-Disposition",
+            `attachment; filename="${photo.originalFilename.replaceAll('"', "")}"`,
+          );
+        }
       } else {
         if (photo.status !== "ready") {
           return reply.code(404).send({ error: "not_ready" });

@@ -16,6 +16,7 @@ import { exportRoutes } from "./routes/admin/export.ts";
 import { publicGalleryRoutes } from "./routes/gallery/public.ts";
 import { systemRoutes } from "./routes/admin/system.ts";
 import { photoManageRoutes } from "./routes/admin/photosManage.ts";
+import { accountRoutes } from "./routes/admin/account.ts";
 
 const WEB_DIST = resolve(process.cwd(), "dist/web");
 
@@ -25,6 +26,10 @@ export async function buildApp() {
       level: config.isProduction ? "info" : "debug",
       transport: config.isProduction ? undefined : { target: "pino-pretty" },
     },
+    // In production the default per-request logging would emit two lines for
+    // every thumbnail a browsing session loads (hundreds per gallery view) —
+    // the custom onResponse hook below logs selectively instead.
+    disableRequestLogging: config.isProduction,
     trustProxy: config.trustProxy,
     bodyLimit: 1024 * 1024, // 1MB default for JSON bodies; uploads use multipart's own limit
     // Without this, an open SSE connection (admin upload-progress stream)
@@ -49,6 +54,26 @@ export async function buildApp() {
     return payload;
   });
 
+  if (config.isProduction) {
+    app.addHook("onResponse", async (request, reply) => {
+      const url = request.raw.url ?? "";
+      // Successful photo-byte and static-asset requests are pure noise at
+      // this app's scale; everything else (and every error) still logs.
+      if (reply.statusCode < 400 && (url.startsWith("/api/photos/") || url.startsWith("/assets/"))) {
+        return;
+      }
+      request.log.info(
+        {
+          method: request.method,
+          url,
+          statusCode: reply.statusCode,
+          responseTime: Math.round(reply.elapsedTime * 10) / 10,
+        },
+        "request",
+      );
+    });
+  }
+
   app.get("/api/health", async () => ({ ok: true }));
 
   await app.register(setupRoutes);
@@ -60,6 +85,7 @@ export async function buildApp() {
   await app.register(publicGalleryRoutes);
   await app.register(systemRoutes);
   await app.register(photoManageRoutes);
+  await app.register(accountRoutes);
 
   if (config.isProduction && existsSync(WEB_DIST)) {
     await app.register(fastifyStatic, {

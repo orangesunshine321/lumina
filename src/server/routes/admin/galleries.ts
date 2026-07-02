@@ -14,11 +14,22 @@ interface GalleryDTO {
   coverPhotoId: string | null;
   photoCount: number;
   favoriteCount: number;
+  allowDownloads: boolean;
+  lastFavoriteAt: string | null;
+  statusCounts: { pending: number; processing: number; failed: number };
   createdAt: string;
   updatedAt: string;
 }
 
-function toDTO(row: typeof schema.galleries.$inferSelect, favoriteCount: number): GalleryDTO {
+interface GalleryExtras {
+  favoriteCount: number;
+  lastFavoriteAt?: Date | null;
+  statusCounts?: { pending: number; processing: number; failed: number };
+}
+
+const ZERO_COUNTS = { pending: 0, processing: 0, failed: 0 };
+
+function toDTO(row: typeof schema.galleries.$inferSelect, extras: GalleryExtras): GalleryDTO {
   return {
     id: row.id,
     slug: row.slug,
@@ -26,18 +37,41 @@ function toDTO(row: typeof schema.galleries.$inferSelect, favoriteCount: number)
     hasPassword: Boolean(row.passwordHash),
     coverPhotoId: row.coverPhotoId,
     photoCount: row.photoCount,
-    favoriteCount,
+    favoriteCount: extras.favoriteCount,
+    allowDownloads: row.allowDownloads,
+    lastFavoriteAt: extras.lastFavoriteAt ? extras.lastFavoriteAt.toISOString() : null,
+    statusCounts: extras.statusCounts ?? ZERO_COUNTS,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
 }
 
-async function favoriteCountFor(galleryId: string): Promise<number> {
-  const [row] = await db
-    .select({ count: sql<number>`count(*)` })
+async function extrasFor(galleryId: string): Promise<GalleryExtras> {
+  const [favorites] = await db
+    .select({
+      count: sql<number>`count(*)`,
+      lastAt: sql<number | null>`max(${schema.favorites.createdAt})`,
+    })
     .from(schema.favorites)
     .where(eq(schema.favorites.galleryId, galleryId));
-  return row?.count ?? 0;
+
+  const statusRows = await db
+    .select({ status: schema.photos.status, count: sql<number>`count(*)` })
+    .from(schema.photos)
+    .where(eq(schema.photos.galleryId, galleryId))
+    .groupBy(schema.photos.status);
+  const statusCounts = { ...ZERO_COUNTS };
+  for (const row of statusRows) {
+    if (row.status === "pending") statusCounts.pending = row.count;
+    if (row.status === "processing") statusCounts.processing = row.count;
+    if (row.status === "failed") statusCounts.failed = row.count;
+  }
+
+  return {
+    favoriteCount: favorites?.count ?? 0,
+    lastFavoriteAt: favorites?.lastAt ? new Date(favorites.lastAt) : null,
+    statusCounts,
+  };
 }
 
 export async function galleryAdminRoutes(app: FastifyInstance) {
@@ -71,7 +105,7 @@ export async function galleryAdminRoutes(app: FastifyInstance) {
         .returning();
 
       reply.code(201);
-      return toDTO(created!, 0);
+      return toDTO(created!, { favoriteCount: 0 });
     },
   );
 
@@ -80,23 +114,31 @@ export async function galleryAdminRoutes(app: FastifyInstance) {
       .select({
         gallery: schema.galleries,
         favoriteCount: sql<number>`count(${schema.favorites.id})`,
+        lastFavoriteAt: sql<number | null>`max(${schema.favorites.createdAt})`,
       })
       .from(schema.galleries)
       .leftJoin(schema.favorites, eq(schema.favorites.galleryId, schema.galleries.id))
       .groupBy(schema.galleries.id)
       .orderBy(desc(schema.galleries.createdAt));
-    return { galleries: rows.map((r) => toDTO(r.gallery, r.favoriteCount)) };
+    return {
+      galleries: rows.map((r) =>
+        toDTO(r.gallery, {
+          favoriteCount: r.favoriteCount,
+          lastFavoriteAt: r.lastFavoriteAt ? new Date(r.lastFavoriteAt) : null,
+        }),
+      ),
+    };
   });
 
   app.get<{ Params: { id: string } }>("/api/admin/galleries/:id", async (request, reply) => {
     const gallery = await findGallery(request.params.id);
     if (!gallery) return reply.code(404).send({ error: "not_found" });
-    return toDTO(gallery, await favoriteCountFor(gallery.id));
+    return toDTO(gallery, await extrasFor(gallery.id));
   });
 
   app.patch<{
     Params: { id: string };
-    Body: { title?: string; password?: string | null; coverPhotoId?: string };
+    Body: { title?: string; password?: string | null; coverPhotoId?: string; allowDownloads?: boolean };
   }>(
     "/api/admin/galleries/:id",
     {
@@ -107,6 +149,7 @@ export async function galleryAdminRoutes(app: FastifyInstance) {
             title: { type: "string", minLength: 1, maxLength: 200 },
             password: { type: ["string", "null"], maxLength: 512 },
             coverPhotoId: { type: "string", maxLength: 64 },
+            allowDownloads: { type: "boolean" },
           },
         },
       },
@@ -119,6 +162,10 @@ export async function galleryAdminRoutes(app: FastifyInstance) {
 
       if (typeof request.body.title === "string") {
         update.title = request.body.title;
+      }
+
+      if (typeof request.body.allowDownloads === "boolean") {
+        update.allowDownloads = request.body.allowDownloads;
       }
 
       if (typeof request.body.coverPhotoId === "string") {
@@ -157,7 +204,74 @@ export async function galleryAdminRoutes(app: FastifyInstance) {
         .where(eq(schema.galleries.id, gallery.id))
         .returning();
 
-      return toDTO(updated!, await favoriteCountFor(gallery.id));
+      return toDTO(updated!, await extrasFor(gallery.id));
+    },
+  );
+
+  /** Issues a fresh unguessable link. The old slug 404s immediately — the
+   * recovery move when a gallery link has been shared further than intended. */
+  app.post<{ Params: { id: string } }>(
+    "/api/admin/galleries/:id/regenerate-slug",
+    async (request, reply) => {
+      const gallery = await findGallery(request.params.id);
+      if (!gallery) return reply.code(404).send({ error: "not_found" });
+
+      const [updated] = await db
+        .update(schema.galleries)
+        .set({ slug: generateSlug(), updatedAt: new Date() })
+        .where(eq(schema.galleries.id, gallery.id))
+        .returning();
+      return toDTO(updated!, await extrasFor(gallery.id));
+    },
+  );
+
+  /** Rewrites sortIndex for every photo in the gallery. Filename order is the
+   * upload default; capture-time ordering fixes multi-camera shoots where
+   * DSC_/IMG_ sequences interleave wrongly. One-shot operation — pagination
+   * cursors and the client grid pick the new order up on their next fetch. */
+  app.post<{ Params: { id: string }; Body: { by: "capturedAt" | "filename" } }>(
+    "/api/admin/galleries/:id/reorder",
+    {
+      schema: {
+        body: {
+          type: "object",
+          required: ["by"],
+          properties: { by: { type: "string", enum: ["capturedAt", "filename"] } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const gallery = await findGallery(request.params.id);
+      if (!gallery) return reply.code(404).send({ error: "not_found" });
+
+      const photos = await db
+        .select({
+          id: schema.photos.id,
+          capturedAt: schema.photos.capturedAt,
+          baseFilename: schema.photos.baseFilename,
+        })
+        .from(schema.photos)
+        .where(eq(schema.photos.galleryId, gallery.id));
+
+      const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+      const sorted = [...photos].sort((a, b) => {
+        if (request.body.by === "capturedAt") {
+          const aTime = a.capturedAt?.getTime();
+          const bTime = b.capturedAt?.getTime();
+          if (aTime !== undefined && bTime !== undefined && aTime !== bTime) return aTime - bTime;
+          if (aTime !== undefined && bTime === undefined) return -1; // photos without EXIF sort last
+          if (aTime === undefined && bTime !== undefined) return 1;
+        }
+        return collator.compare(a.baseFilename, b.baseFilename);
+      });
+
+      const reassign = db.$client.transaction(() => {
+        const stmt = db.$client.prepare("UPDATE photos SET sort_index = ? WHERE id = ?");
+        sorted.forEach((photo, index) => stmt.run(index, photo.id));
+      });
+      reassign();
+
+      return { ok: true, reordered: sorted.length };
     },
   );
 

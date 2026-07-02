@@ -60,7 +60,7 @@ If that turns out to matter to you, the fix needs zero code changes: run the exa
 1. **Create a gallery.** From the admin dashboard, click "New gallery," give it a title (e.g. the client's name/shoot). You land on the gallery's detail page.
 2. **Upload.** Drag a folder of exported JPEGs onto the upload panel. Files upload with live per-file and overall progress; each photo flips from a processing placeholder to a real thumbnail as background processing (thumbnail/preview generation) finishes — you don't need to wait for the whole batch before the grid starts filling in. If a browser tab closes or Wi-Fi drops mid-batch, just reopen the gallery and re-select the same folder — already-uploaded files are detected and skipped automatically.
    You can manage photos afterward: click any thumbnail to review it full-size, use **Select** mode to delete photos or pick the gallery's cover image, and retry any photo whose processing failed with one click.
-3. **Set a password (optional) and copy the link.** In the gallery's settings panel, optionally set a password, then copy the shareable link and send it to your client. No account or login is ever required on their end.
+3. **Set a password (optional) and copy the link.** In the gallery's settings panel, optionally set a password, then copy the shareable link and send it to your client. No account or login is ever required on their end. You can also enable **client downloads** (off by default — full-resolution originals, individually or as a zip), reorder photos by **capture time** (fixes interleaved multi-camera shoots), and **get a new link** at any time if the old one has spread further than intended — the old link stops working immediately.
 4. **Your client browses and favorites.** They open the link (entering the password if you set one), browse the grid, and tap hearts to pick favorites — with pinch-to-zoom in the full-screen viewer and a **Favorites** filter to review just their picks. Their selections are saved automatically and persist if they come back later, on any device, without an account.
 5. **Pull picks into Lightroom.** See below.
 
@@ -82,7 +82,7 @@ No plugin, no XMP sidecar writing, no catalog scripting — just a clipboard but
 
 ## Backups
 
-**The database backs itself up automatically** — a consistent snapshot (safe to run against the live database, no downtime) is written to `data/db/backups/` once at startup and then once every 24 hours, with the last 14 daily snapshots kept and older ones pruned. Nothing to configure. If it ever stops running for some reason, a warning banner appears in the admin UI.
+**The database backs itself up automatically** — a consistent snapshot (safe to run against the live database, no downtime) is written to `data/db/backups/` once at startup and then once every 24 hours, with the last 14 daily snapshots kept and older ones pruned. Nothing to configure. If it ever stops running for some reason, a warning banner appears in the admin UI. You can also trigger a snapshot on demand and **download the latest backup** straight from the admin dashboard's system panel — the easiest way to keep an off-box copy without touching a terminal.
 
 **Photo files are not included in that automatic snapshot** (they're large, and re-processing thumbnails from a re-uploaded original is always possible — but favorites and gallery metadata have no other copy anywhere, which is why *that* part is automatic and mandatory). For full disaster recovery — protecting against a dead drive, not just a bad deploy — back up the entire `./data` directory yourself, on a schedule, to somewhere else. [restic](https://restic.net/) is a good fit: a single static binary, encrypted, deduplicated, incremental, and backend-agnostic (a second drive, another machine over SFTP, or cloud storage all work the same way).
 
@@ -108,9 +108,11 @@ docker compose up -d
 
 Database migrations run automatically on every container start — there's no separate migration step.
 
+If you host this repo on GitHub, CI runs the test suite on every push, and pushing a version tag (`git tag v1.2.0 && git push --tags`) publishes a prebuilt multi-arch image to GitHub Container Registry — after which any machine can skip local builds entirely by using `image: ghcr.io/<you>/pixset:latest` in place of `build: .` in the compose file.
+
 ## Troubleshooting
 
-**Forgot the admin password.** There's no email-based reset flow (out of scope by design — this is a single-admin tool). Recovery is one SQL statement:
+**Forgot the admin password.** You can change your password and email any time from the account menu (top right) while signed in. If you're locked out entirely: there's no email-based reset flow (out of scope by design — this is a single-admin tool), and recovery is one SQL statement:
 
 ```bash
 docker compose exec app sh -c 'sqlite3 /data/db/app.sqlite "DELETE FROM admin_sessions; DELETE FROM admin_users;"'

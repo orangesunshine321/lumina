@@ -16,7 +16,7 @@ export function GalleryList() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold tracking-tight text-ink-900">Galleries</h1>
+        <h1 className="font-display text-2xl font-semibold tracking-tight text-ink-900">Galleries</h1>
         <button
           onClick={() => setCreating(true)}
           className="rounded-lg bg-ink-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-ink-800"
@@ -38,11 +38,28 @@ export function GalleryList() {
       )}
 
       {galleries.data && galleries.data.galleries.length === 0 && (
-        <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-ink-200 py-24 text-center">
-          <p className="text-base font-medium text-ink-900">No galleries yet</p>
+        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-ink-200 py-24 text-center">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            className="h-10 w-10 text-ink-200"
+          >
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <circle cx="8.5" cy="8.5" r="1.5" />
+            <path d="M21 15l-5-5L5 21" />
+          </svg>
+          <p className="font-display text-lg font-medium text-ink-900">Your first gallery awaits</p>
           <p className="max-w-sm text-sm text-ink-400">
             Create a gallery, upload a batch of exported JPEGs, and share the link with your client.
           </p>
+          <button
+            onClick={() => setCreating(true)}
+            className="mt-1 rounded-lg border border-ink-200 px-4 py-2 text-sm font-medium text-ink-700 transition-colors hover:bg-ink-100"
+          >
+            Create a gallery
+          </button>
         </div>
       )}
 
@@ -136,9 +153,23 @@ function GalleryCard({ gallery }: { gallery: GalleryDTO }) {
             </>
           )}
         </span>
+        {gallery.lastFavoriteAt && (
+          <span className="text-xs text-ink-400">Picks updated {relativeTime(gallery.lastFavoriteAt)}</span>
+        )}
       </div>
     </Link>
   );
+}
+
+function relativeTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} ${minutes === 1 ? "minute" : "minutes"} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} ${hours === 1 ? "hour" : "hours"} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} ${days === 1 ? "day" : "days"} ago`;
 }
 
 function CreateGalleryDialog({ onClose }: { onClose: () => void }) {

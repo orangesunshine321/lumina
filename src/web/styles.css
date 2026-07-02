@@ -1,8 +1,14 @@
 @import "tailwindcss";
+/* Self-hosted variable fonts — no external font CDN, ever. Inter carries the
+   UI; Fraunces (with its optical-size axis) carries display type like gallery
+   titles, where a photography brand earns its serifs. */
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/fraunces/opsz.css";
 
 @theme {
   --font-sans:
-    "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Fraunces Variable", Georgia, "Times New Roman", serif;
   --color-ink-950: #0b0b0c;
   --color-ink-900: #131316;
   --color-ink-800: #1c1c21;
@@ -69,6 +75,42 @@
   .pg-tile:hover .pg-photo {
     transform: scale(1.03);
   }
+}
+
+/* First-load entrance for the opening rows of a gallery — each tile rises
+   ~8px as it fades in, staggered by index (delay set inline, capped ~300ms).
+   Only the initial page ever gets the class, so pagination and re-renders
+   never replay it. The reduced-motion block above flattens it entirely. */
+@keyframes pg-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.pg-enter {
+  animation: pg-enter 480ms ease-out both;
+}
+
+/* The hero's scroll hint: a slow, quiet drift. */
+@keyframes hero-hint {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.7;
+  }
+  50% {
+    transform: translateY(6px);
+    opacity: 1;
+  }
+}
+
+.hero-hint {
+  animation: hero-hint 2.4s ease-in-out infinite;
 }
 
 @layer utilities {

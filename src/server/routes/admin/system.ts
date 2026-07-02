@@ -1,11 +1,11 @@
-import { readFileSync } from "node:fs";
-import { stat } from "node:fs/promises";
-import { resolve } from "node:path";
+import { createReadStream, readFileSync } from "node:fs";
+import { readdir, stat } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import type { FastifyInstance } from "fastify";
-import { eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { db, schema } from "../../db/client.ts";
 import { requireAdmin } from "../../middleware/requireAdmin.ts";
-import { getLastBackupStatus } from "../../services/backup.ts";
+import { getLastBackupStatus, runDatabaseBackup } from "../../services/backup.ts";
 import { config } from "../../config.ts";
 
 const VERSION: string = (() => {
@@ -19,6 +19,30 @@ const VERSION: string = (() => {
 export async function systemRoutes(app: FastifyInstance) {
   app.get("/api/admin/backup-status", { preHandler: requireAdmin }, async () => {
     return getLastBackupStatus();
+  });
+
+  /** On-demand snapshot — same consistent online backup the daily sweep runs. */
+  app.post("/api/admin/backup/run", { preHandler: requireAdmin }, async () => {
+    await runDatabaseBackup();
+    return getLastBackupStatus();
+  });
+
+  /** Streams the newest snapshot so off-box backup is one click, no CLI.
+   * (Photo files still need a filesystem-level backup — documented in the
+   * README — but the DB is the part with no other copy anywhere.) */
+  app.get("/api/admin/backup/download", { preHandler: requireAdmin }, async (request, reply) => {
+    const files = (await readdir(config.backupsDir).catch(() => []))
+      .filter((f) => f.startsWith("app-") && f.endsWith(".sqlite"))
+      .sort(); // YYYY-MM-DD names — lexical sort is chronological
+    const latest = files[files.length - 1];
+    if (!latest) return reply.code(404).send({ error: "no_backup_yet" });
+
+    const path = join(config.backupsDir, latest);
+    const info = await stat(path);
+    reply.header("Content-Type", "application/octet-stream");
+    reply.header("Content-Disposition", `attachment; filename="pixset-${latest}"`);
+    reply.header("Content-Length", info.size);
+    return reply.send(createReadStream(path));
   });
 
   /** One-call health/inventory snapshot for the admin dashboard. Sizes come

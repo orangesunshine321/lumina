@@ -14,6 +14,7 @@ import {
   verifyPassword,
 } from "../../services/auth.ts";
 import { checkRateLimit, recordAttempt } from "../../services/rateLimiter.ts";
+import { streamGalleryZip } from "../../services/zip.ts";
 import { ensureClientToken, getClientIp } from "../../lib/http.ts";
 import { config } from "../../config.ts";
 
@@ -55,8 +56,32 @@ export async function publicGalleryRoutes(app: FastifyInstance) {
       hasAccess,
       photoCount,
       favoriteCount,
+      allowDownloads: hasAccess ? gallery.allowDownloads : false,
+      coverPhotoId: hasAccess ? gallery.coverPhotoId : null,
     };
   });
+
+  /** Client-facing zip download — only when the photographer has opted the
+   * gallery into downloads, and always behind the same access gate as the
+   * photos themselves. */
+  app.get<{ Params: { slug: string }; Querystring: { scope?: string } }>(
+    "/api/gallery/:slug/download",
+    { preHandler: requireGalleryAccess },
+    async (request, reply) => {
+      const gallery = request.gallery!;
+      if (!gallery.allowDownloads) {
+        return reply.code(403).send({ error: "downloads_disabled" });
+      }
+      const scope = request.query.scope ?? "all";
+      if (scope !== "all" && scope !== "favorites") {
+        return reply.code(400).send({ error: "invalid_scope" });
+      }
+      const streamed = await streamGalleryZip(request, reply, gallery, scope);
+      if (!streamed) {
+        return reply.code(400).send({ error: scope === "favorites" ? "no_favorites" : "no_photos" });
+      }
+    },
+  );
 
   app.post<{ Params: { slug: string }; Body: { password: string } }>(
     "/api/gallery/:slug/unlock",

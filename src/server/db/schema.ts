@@ -40,6 +40,10 @@ export const galleries = sqliteTable(
     passwordVersion: integer("password_version").notNull().default(0),
     coverPhotoId: text("cover_photo_id").references((): any => photos.id, { onDelete: "set null" }),
     photoCount: integer("photo_count").notNull().default(0),
+    // When true, clients can download originals (per-photo and as zips) —
+    // off by default so sharing a link never hands out full-res files
+    // unless the photographer opts in.
+    allowDownloads: integer("allow_downloads", { mode: "boolean" }).notNull().default(false),
     createdAt: timestamp("created_at"),
     updatedAt: timestamp("updated_at"),
   },

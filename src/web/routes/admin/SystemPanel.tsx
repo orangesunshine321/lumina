@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api.ts";
 import type { SystemStatsDTO } from "../../lib/types.ts";
 
@@ -6,6 +7,9 @@ import type { SystemStatsDTO } from "../../lib/types.ts";
  * answer "is everything healthy and how big is my library" at a glance
  * without turning the gallery list into a monitoring page. */
 export function SystemPanel() {
+  const queryClient = useQueryClient();
+  const [backingUp, setBackingUp] = useState(false);
+  const [backupDone, setBackupDone] = useState(false);
   const stats = useQuery({
     queryKey: ["system"],
     queryFn: () => api.get<SystemStatsDTO>("/api/admin/system"),
@@ -15,6 +19,21 @@ export function SystemPanel() {
   // Informational only — render nothing rather than an error card.
   if (!stats.data) return null;
   const { version, backup, database, library, queue } = stats.data;
+
+  async function runBackupNow() {
+    setBackingUp(true);
+    try {
+      const fresh = await api.post<SystemStatsDTO["backup"]>("/api/admin/backup/run");
+      queryClient.setQueryData<SystemStatsDTO>(["system"], (old) =>
+        old ? { ...old, backup: fresh } : old,
+      );
+      queryClient.invalidateQueries({ queryKey: ["backup-status"] });
+      setBackupDone(true);
+      setTimeout(() => setBackupDone(false), 2000);
+    } finally {
+      setBackingUp(false);
+    }
+  }
 
   return (
     <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-2xl border border-ink-100 bg-white px-5 py-3 text-xs text-ink-400">
@@ -35,6 +54,26 @@ export function SystemPanel() {
         )}
         <span className="font-medium text-ink-600">Backup</span>
         {backup.lastBackupAt ? new Date(backup.lastBackupAt).toLocaleString() : "not yet run"}
+      </span>
+
+      <span className="flex items-center gap-3">
+        <button
+          onClick={() => void runBackupNow()}
+          disabled={backingUp}
+          className="font-medium text-ink-600 underline decoration-ink-300 underline-offset-2 transition-colors hover:text-ink-900 disabled:opacity-50"
+        >
+          {backingUp ? "Backing up…" : backupDone ? "Done" : "Back up now"}
+        </button>
+        {backup.lastBackupAt ? (
+          <a
+            href="/api/admin/backup/download"
+            className="font-medium text-ink-600 underline decoration-ink-300 underline-offset-2 transition-colors hover:text-ink-900"
+          >
+            Download backup
+          </a>
+        ) : (
+          <span className="cursor-not-allowed font-medium text-ink-300">Download backup</span>
+        )}
       </span>
 
       {(queue.pending > 0 || queue.processing > 0) && (

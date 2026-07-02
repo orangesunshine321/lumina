@@ -9,6 +9,12 @@ export interface GalleryDTO {
   coverPhotoId: string | null;
   photoCount: number;
   favoriteCount: number;
+  /** Whether clients may download originals (per-photo and zips). */
+  allowDownloads: boolean;
+  /** When the client last toggled a favorite — activity signal for the list. */
+  lastFavoriteAt: string | null;
+  /** Zeroed on the list endpoint; populated on single-gallery GET/PATCH. */
+  statusCounts: { pending: number; processing: number; failed: number };
   createdAt: string;
   updatedAt: string;
 }
@@ -21,6 +27,10 @@ export interface GalleryPublicDTO {
   /** Count of ready (client-visible) photos. 0 until access is granted. */
   photoCount: number;
   favoriteCount: number;
+  /** Downloads opt-in; false until access is granted. */
+  allowDownloads: boolean;
+  /** Cover photo for the hero header; null until access is granted. */
+  coverPhotoId: string | null;
 }
 
 export interface SystemStatsDTO {

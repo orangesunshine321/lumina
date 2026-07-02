@@ -1,0 +1,1 @@
+ALTER TABLE `galleries` ADD `allow_downloads` integer DEFAULT false NOT NULL;
