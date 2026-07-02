@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { db, schema } from "../../db/client.ts";
 import { generateId, generateSlug } from "../../lib/ids.ts";
 import { hashPassword } from "../../services/auth.ts";
@@ -15,6 +15,8 @@ interface GalleryDTO {
   photoCount: number;
   favoriteCount: number;
   allowDownloads: boolean;
+  archivedAt: string | null;
+  expiresAt: string | null;
   lastFavoriteAt: string | null;
   statusCounts: { pending: number; processing: number; failed: number };
   /** Total bytes of originals in this gallery. Zeroed on the list endpoint;
@@ -43,6 +45,8 @@ function toDTO(row: typeof schema.galleries.$inferSelect, extras: GalleryExtras)
     photoCount: row.photoCount,
     favoriteCount: extras.favoriteCount,
     allowDownloads: row.allowDownloads,
+    archivedAt: row.archivedAt ? row.archivedAt.toISOString() : null,
+    expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,
     lastFavoriteAt: extras.lastFavoriteAt ? extras.lastFavoriteAt.toISOString() : null,
     statusCounts: extras.statusCounts ?? ZERO_COUNTS,
     originalsBytes: extras.originalsBytes ?? 0,
@@ -121,26 +125,41 @@ export async function galleryAdminRoutes(app: FastifyInstance) {
     },
   );
 
-  app.get("/api/admin/galleries", async () => {
-    const rows = await db
-      .select({
-        gallery: schema.galleries,
-        favoriteCount: sql<number>`count(${schema.favorites.id})`,
-        lastFavoriteAt: sql<number | null>`max(${schema.favorites.createdAt})`,
-      })
-      .from(schema.galleries)
-      .leftJoin(schema.favorites, eq(schema.favorites.galleryId, schema.galleries.id))
-      .groupBy(schema.galleries.id)
-      .orderBy(desc(schema.galleries.createdAt));
-    return {
-      galleries: rows.map((r) =>
-        toDTO(r.gallery, {
-          favoriteCount: r.favoriteCount,
-          lastFavoriteAt: r.lastFavoriteAt ? new Date(r.lastFavoriteAt) : null,
-        }),
-      ),
-    };
-  });
+  app.get<{ Querystring: { search?: string; archived?: string } }>(
+    "/api/admin/galleries",
+    async (request) => {
+      const includeArchived = request.query.archived === "1" || request.query.archived === "true";
+      const search = request.query.search?.trim();
+
+      const conditions = [];
+      if (!includeArchived) conditions.push(isNull(schema.galleries.archivedAt));
+      if (search) {
+        // ESCAPE '\' so %/_ in the query are matched literally, not as wildcards.
+        const pattern = `%${escapeLike(search)}%`;
+        conditions.push(sql`${schema.galleries.title} like ${pattern} escape '\\'`);
+      }
+
+      const rows = await db
+        .select({
+          gallery: schema.galleries,
+          favoriteCount: sql<number>`count(${schema.favorites.id})`,
+          lastFavoriteAt: sql<number | null>`max(${schema.favorites.createdAt})`,
+        })
+        .from(schema.galleries)
+        .leftJoin(schema.favorites, eq(schema.favorites.galleryId, schema.galleries.id))
+        .where(conditions.length ? and(...conditions) : undefined)
+        .groupBy(schema.galleries.id)
+        .orderBy(desc(schema.galleries.createdAt));
+      return {
+        galleries: rows.map((r) =>
+          toDTO(r.gallery, {
+            favoriteCount: r.favoriteCount,
+            lastFavoriteAt: r.lastFavoriteAt ? new Date(r.lastFavoriteAt) : null,
+          }),
+        ),
+      };
+    },
+  );
 
   app.get<{ Params: { id: string } }>("/api/admin/galleries/:id", async (request, reply) => {
     const gallery = await findGallery(request.params.id);
@@ -150,7 +169,14 @@ export async function galleryAdminRoutes(app: FastifyInstance) {
 
   app.patch<{
     Params: { id: string };
-    Body: { title?: string; password?: string | null; coverPhotoId?: string; allowDownloads?: boolean };
+    Body: {
+      title?: string;
+      password?: string | null;
+      coverPhotoId?: string;
+      allowDownloads?: boolean;
+      archived?: boolean;
+      expiresAt?: string | null;
+    };
   }>(
     "/api/admin/galleries/:id",
     {
@@ -162,6 +188,8 @@ export async function galleryAdminRoutes(app: FastifyInstance) {
             password: { type: ["string", "null"], maxLength: 512 },
             coverPhotoId: { type: "string", maxLength: 64 },
             allowDownloads: { type: "boolean" },
+            archived: { type: "boolean" },
+            expiresAt: { type: ["string", "null"], format: "date-time" },
           },
         },
       },
@@ -178,6 +206,23 @@ export async function galleryAdminRoutes(app: FastifyInstance) {
 
       if (typeof request.body.allowDownloads === "boolean") {
         update.allowDownloads = request.body.allowDownloads;
+      }
+
+      if (typeof request.body.archived === "boolean") {
+        update.archivedAt = request.body.archived ? new Date() : null;
+      }
+
+      if ("expiresAt" in request.body) {
+        const raw = request.body.expiresAt;
+        if (raw === null) {
+          update.expiresAt = null;
+        } else if (typeof raw === "string") {
+          const when = new Date(raw);
+          if (Number.isNaN(when.getTime())) {
+            return reply.code(400).send({ error: "invalid_expiry" });
+          }
+          update.expiresAt = when;
+        }
       }
 
       if (typeof request.body.coverPhotoId === "string") {
@@ -316,4 +361,10 @@ export async function galleryAdminRoutes(app: FastifyInstance) {
 async function findGallery(id: string) {
   const [gallery] = await db.select().from(schema.galleries).where(eq(schema.galleries.id, id)).limit(1);
   return gallery ?? null;
+}
+
+/** Neutralizes LIKE wildcards in user search input so `%` and `_` are treated
+ * as literals (paired with an ESCAPE clause). */
+function escapeLike(input: string): string {
+  return input.replace(/[\\%_]/g, "\\$&");
 }

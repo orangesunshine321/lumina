@@ -15,6 +15,12 @@ export async function resolveGalleryById(id: string): Promise<GalleryRow | null>
   return gallery ?? null;
 }
 
+/** A gallery whose link lifetime has passed. Admins bypass this (they resolve
+ * galleries through the admin routes); it only gates public/client access. */
+export function isGalleryExpired(gallery: GalleryRow): boolean {
+  return gallery.expiresAt !== null && gallery.expiresAt.getTime() < Date.now();
+}
+
 export async function hasValidGalleryCookie(
   request: FastifyRequest,
   gallery: GalleryRow,
@@ -49,6 +55,10 @@ export async function requireGalleryAccess(request: FastifyRequest, reply: Fasti
   const gallery = await resolveGalleryBySlug(slug);
   if (!gallery) {
     return reply.code(404).send({ error: "not_found" });
+  }
+
+  if (isGalleryExpired(gallery)) {
+    return reply.code(410).send({ error: "expired" });
   }
 
   ensureClientToken(request, reply);

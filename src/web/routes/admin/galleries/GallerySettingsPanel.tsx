@@ -31,6 +31,40 @@ export function GallerySettingsPanel(props: {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  // Expiry is edited as a date-only value (YYYY-MM-DD); we send end-of-day.
+  const [expiryDraft, setExpiryDraft] = useState(
+    gallery.expiresAt ? gallery.expiresAt.slice(0, 10) : "",
+  );
+  const [expiryBusy, setExpiryBusy] = useState(false);
+  const [expiryError, setExpiryError] = useState<string | null>(null);
+  const [archiveBusy, setArchiveBusy] = useState(false);
+
+  async function saveExpiry(value: string | null) {
+    setExpiryBusy(true);
+    setExpiryError(null);
+    try {
+      const expiresAt = value ? new Date(`${value}T23:59:59`).toISOString() : null;
+      const updated = await api.patch<GalleryDTO>(`/api/admin/galleries/${gallery.id}`, { expiresAt });
+      onUpdated(updated);
+    } catch {
+      setExpiryError("Couldn't update the expiry.");
+    } finally {
+      setExpiryBusy(false);
+    }
+  }
+
+  async function toggleArchive() {
+    setArchiveBusy(true);
+    try {
+      const updated = await api.patch<GalleryDTO>(`/api/admin/galleries/${gallery.id}`, {
+        archived: !gallery.archivedAt,
+      });
+      onUpdated(updated);
+    } finally {
+      setArchiveBusy(false);
+    }
+  }
+
   async function saveTitle() {
     if (title.trim() === gallery.title) return;
     if (!title.trim()) {
@@ -241,6 +275,66 @@ export function GallerySettingsPanel(props: {
             {linkDone && <span className="text-sm text-text-2">New link created.</span>}
           </div>
           {linkError && <p className="mt-2 text-sm text-accent-500">{linkError}</p>}
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-line bg-surface p-5">
+        <h3 className="text-sm font-semibold text-text-1">Access &amp; lifecycle</h3>
+
+        <div className="mt-4 flex flex-col gap-2">
+          <label htmlFor="gallery-expiry" className="text-sm font-medium text-text-2">
+            Link expiry
+          </label>
+          <p className="text-xs text-text-3">
+            After this date the client link stops working. Leave blank to never expire.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              id="gallery-expiry"
+              type="date"
+              value={expiryDraft}
+              onChange={(e) => setExpiryDraft(e.target.value)}
+              className="rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-text-1 outline-none transition-colors focus:border-line-strong"
+            />
+            <button
+              onClick={() => void saveExpiry(expiryDraft || null)}
+              disabled={expiryBusy || (expiryDraft ? gallery.expiresAt?.slice(0, 10) === expiryDraft : !gallery.expiresAt)}
+              className="rounded-lg border border-line px-3 py-2 text-sm font-medium text-text-1 transition-colors hover:bg-surface-2 disabled:opacity-50"
+            >
+              {expiryBusy ? "Saving…" : "Save"}
+            </button>
+            {gallery.expiresAt && (
+              <button
+                onClick={() => {
+                  setExpiryDraft("");
+                  void saveExpiry(null);
+                }}
+                disabled={expiryBusy}
+                className="text-sm font-medium text-text-2 underline decoration-line-strong underline-offset-2 hover:text-text-1"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          {expiryError && <p className="text-sm text-accent-500">{expiryError}</p>}
+        </div>
+
+        <div className="mt-5 flex items-center justify-between gap-4 border-t border-line pt-4">
+          <div>
+            <p className="text-sm font-medium text-text-2">
+              {gallery.archivedAt ? "Archived" : "Archive gallery"}
+            </p>
+            <p className="mt-0.5 text-xs text-text-3">
+              Hides it from your gallery list. The link keeps working.
+            </p>
+          </div>
+          <button
+            onClick={() => void toggleArchive()}
+            disabled={archiveBusy}
+            className="shrink-0 rounded-lg border border-line px-4 py-2 text-sm font-medium text-text-1 transition-colors hover:bg-surface-2 disabled:opacity-50"
+          >
+            {archiveBusy ? "…" : gallery.archivedAt ? "Unarchive" : "Archive"}
+          </button>
         </div>
       </section>
 

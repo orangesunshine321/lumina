@@ -51,6 +51,12 @@ export const galleries = sqliteTable(
     // off by default so sharing a link never hands out full-res files
     // unless the photographer opts in.
     allowDownloads: integer("allow_downloads", { mode: "boolean" }).notNull().default(false),
+    // Archived galleries are hidden from the default admin list but remain
+    // fully accessible by their link — a way to declutter finished shoots.
+    archivedAt: integer("archived_at", { mode: "timestamp_ms" }),
+    // Optional link lifetime: once past, the public link stops working (admins
+    // still have full access). Null = never expires.
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }),
     createdAt: timestamp("created_at"),
     updatedAt: timestamp("updated_at"),
   },

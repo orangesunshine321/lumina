@@ -17,6 +17,8 @@ export interface GalleryDTO {
   statusCounts: { pending: number; processing: number; failed: number };
   /** Total bytes of originals; zeroed on the list endpoint. */
   originalsBytes: number;
+  archivedAt: string | null;
+  expiresAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -26,6 +28,8 @@ export interface GalleryPublicDTO {
   title: string;
   requiresPassword: boolean;
   hasAccess: boolean;
+  /** True when the gallery link has passed its expiry. */
+  expired: boolean;
   /** Count of ready (client-visible) photos. 0 until access is granted. */
   photoCount: number;
   favoriteCount: number;

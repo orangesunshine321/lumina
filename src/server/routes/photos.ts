@@ -4,7 +4,7 @@ import type { FastifyInstance } from "fastify";
 import { eq } from "drizzle-orm";
 import { db, schema } from "../db/client.ts";
 import { ADMIN_SESSION_COOKIE, verifyAdminSession } from "../services/auth.ts";
-import { hasGalleryAccess, resolveGalleryById } from "../services/photoAccess.ts";
+import { hasGalleryAccess, isGalleryExpired, resolveGalleryById } from "../services/photoAccess.ts";
 import { derivedPath, originalPath, type DerivedVariant } from "../lib/storage.ts";
 
 const VARIANTS = ["thumb", "thumb2x", "preview", "preview2x", "original"] as const;
@@ -40,7 +40,9 @@ export async function photoRoutes(app: FastifyInstance) {
 
       const adminToken = request.cookies[ADMIN_SESSION_COOKIE];
       const isAdmin = Boolean(await verifyAdminSession(adminToken));
-      if (!isAdmin && !(await hasGalleryAccess(request, gallery))) {
+      // Non-admins are blocked once the gallery link has expired (admins keep
+      // full access to manage it).
+      if (!isAdmin && (isGalleryExpired(gallery) || !(await hasGalleryAccess(request, gallery)))) {
         return reply.code(403).send({ error: "forbidden" });
       }
 

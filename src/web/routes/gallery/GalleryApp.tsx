@@ -63,6 +63,17 @@ export function GalleryApp() {
   const gallery = meta.data;
   if (!gallery) return null;
 
+  if (gallery.expired) {
+    return (
+      <div className="flex h-screen w-screen flex-col items-center justify-center gap-2 px-6 text-center text-text-2">
+        <p className="font-display text-2xl text-text-1">This gallery has expired</p>
+        <p className="text-sm">
+          The link is no longer active. Reach out to your photographer if you still need access.
+        </p>
+      </div>
+    );
+  }
+
   if (gallery.requiresPassword && !gallery.hasAccess) {
     return (
       <PasswordGate

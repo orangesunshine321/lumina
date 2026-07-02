@@ -3,6 +3,7 @@ import { and, asc, eq, gt, isNotNull, sql } from "drizzle-orm";
 import { db, schema } from "../../db/client.ts";
 import {
   hasGalleryAccess,
+  isGalleryExpired,
   requireGalleryAccess,
   resolveGalleryBySlug,
 } from "../../services/photoAccess.ts";
@@ -29,6 +30,22 @@ export async function publicGalleryRoutes(app: FastifyInstance) {
     const gallery = await resolveGalleryBySlug(request.params.slug);
     if (!gallery) return reply.code(404).send({ error: "not_found" });
 
+    // A friendly "expired" state rather than a bare 404 — the link holder knew
+    // the gallery existed, so telling them it's expired is the kinder answer.
+    if (isGalleryExpired(gallery)) {
+      return {
+        slug: gallery.slug,
+        title: gallery.title,
+        requiresPassword: false,
+        hasAccess: false,
+        expired: true,
+        photoCount: 0,
+        favoriteCount: 0,
+        allowDownloads: false,
+        coverPhotoId: null,
+      };
+    }
+
     ensureClientToken(request, reply);
     const hasAccess = await hasGalleryAccess(request, gallery);
 
@@ -54,6 +71,7 @@ export async function publicGalleryRoutes(app: FastifyInstance) {
       title: gallery.title,
       requiresPassword: Boolean(gallery.passwordHash),
       hasAccess,
+      expired: false,
       photoCount,
       favoriteCount,
       allowDownloads: hasAccess ? gallery.allowDownloads : false,
@@ -97,6 +115,10 @@ export async function publicGalleryRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const gallery = await resolveGalleryBySlug(request.params.slug);
       const ip = getClientIp(request);
+
+      if (gallery && isGalleryExpired(gallery)) {
+        return reply.code(410).send({ error: "expired" });
+      }
 
       const rateLimit = await checkRateLimit({ scope: "gallery_unlock", galleryId: gallery?.id, ip });
       if (!rateLimit.allowed) {

@@ -8,15 +8,28 @@ import { SystemPanel } from "./SystemPanel.tsx";
 
 export function GalleryList() {
   const [creating, setCreating] = useState(false);
+  const [search, setSearch] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
+  const debouncedSearch = useDebounced(search, 250);
 
   const galleries = useQuery({
-    queryKey: ["admin-galleries"],
-    queryFn: () => api.get<{ galleries: GalleryDTO[] }>("/api/admin/galleries"),
+    queryKey: ["admin-galleries", debouncedSearch, showArchived],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (debouncedSearch) params.set("search", debouncedSearch);
+      if (showArchived) params.set("archived", "1");
+      const qs = params.toString();
+      return api.get<{ galleries: GalleryDTO[] }>(`/api/admin/galleries${qs ? `?${qs}` : ""}`);
+    },
+    placeholderData: (prev) => prev,
   });
+
+  const isEmpty = galleries.data && galleries.data.galleries.length === 0;
+  const isFiltering = Boolean(debouncedSearch) || showArchived;
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-2xl font-medium tracking-tight text-text-1">Galleries</h1>
         <button
           onClick={() => setCreating(true)}
@@ -24,6 +37,37 @@ export function GalleryList() {
         >
           New gallery
         </button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative min-w-0 flex-1">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3"
+          >
+            <circle cx="11" cy="11" r="7" />
+            <path d="M21 21l-4.3-4.3" strokeLinecap="round" />
+          </svg>
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search galleries…"
+            className="w-full rounded-lg border border-line bg-surface py-2 pl-9 pr-3 text-sm text-text-1 outline-none transition-colors focus:border-line-strong"
+          />
+        </div>
+        <label className="flex shrink-0 cursor-pointer items-center gap-2 text-sm text-text-2">
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={(e) => setShowArchived(e.target.checked)}
+            className="h-4 w-4 rounded border-line accent-text-1"
+          />
+          Show archived
+        </label>
       </div>
 
       <ErrorBoundary label="the gallery list">
@@ -39,7 +83,13 @@ export function GalleryList() {
           </p>
         )}
 
-        {galleries.data && galleries.data.galleries.length === 0 && (
+        {isEmpty && isFiltering && (
+          <p className="py-24 text-center text-sm text-text-3">
+            No galleries match. Try a different search{showArchived ? "" : " or show archived galleries"}.
+          </p>
+        )}
+
+        {isEmpty && !isFiltering && (
           <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-line py-24 text-center">
             <span className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-2 text-text-3">
               <svg
@@ -83,6 +133,15 @@ export function GalleryList() {
   );
 }
 
+function useDebounced<T>(value: T, ms: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return debounced;
+}
+
 /** Warm the detail page's caches on hover/focus so clicking a card lands on
  * fully-rendered content instead of a spinner. Fire-and-forget. */
 function prefetchGalleryDetail(queryClient: QueryClient, galleryId: string) {
@@ -108,7 +167,9 @@ function GalleryCard({ gallery }: { gallery: GalleryDTO }) {
       to={`/admin/galleries/${gallery.id}`}
       onMouseEnter={() => prefetchGalleryDetail(queryClient, gallery.id)}
       onFocus={() => prefetchGalleryDetail(queryClient, gallery.id)}
-      className="group flex flex-col overflow-hidden rounded-2xl border border-line bg-surface transition-colors hover:border-line-strong"
+      className={`group flex flex-col overflow-hidden rounded-2xl border border-line bg-surface transition-colors hover:border-line-strong ${
+        gallery.archivedAt ? "opacity-60 hover:opacity-100" : ""
+      }`}
     >
       <div className="relative flex aspect-4/3 items-center justify-center overflow-hidden bg-surface-2">
         {gallery.coverPhotoId ? (
@@ -140,6 +201,22 @@ function GalleryCard({ gallery }: { gallery: GalleryDTO }) {
             </svg>
           </span>
         )}
+        <div className="absolute left-3 top-3 flex gap-1.5">
+          {gallery.archivedAt && (
+            <span className="rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm">
+              Archived
+            </span>
+          )}
+          {gallery.expiresAt && (
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm ${
+                new Date(gallery.expiresAt) < new Date() ? "bg-accent-500/80" : "bg-black/55"
+              }`}
+            >
+              {new Date(gallery.expiresAt) < new Date() ? "Expired" : "Expires"}
+            </span>
+          )}
+        </div>
       </div>
       <div className="flex flex-col gap-1 p-4">
         <span className="truncate text-sm font-medium text-text-1">{gallery.title}</span>
