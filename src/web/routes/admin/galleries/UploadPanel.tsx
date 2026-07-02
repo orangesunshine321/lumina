@@ -29,6 +29,7 @@ function uploadErrorMessage(xhr: XMLHttpRequest): string {
   }
   if (code === "invalid_file_type") return "Not a JPEG — export photos as JPEG and try again.";
   if (code === "file_too_large") return "File is too large (50MB max).";
+  if (code === "image_too_large") return "Image resolution is too high — over 100 megapixels.";
   if (xhr.status >= 500) return "Server error — try again.";
   return `Upload failed (HTTP ${xhr.status}).`;
 }

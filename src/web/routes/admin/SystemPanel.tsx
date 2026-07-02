@@ -18,7 +18,7 @@ export function SystemPanel() {
 
   // Informational only — render nothing rather than an error card.
   if (!stats.data) return null;
-  const { version, backup, database, library, queue } = stats.data;
+  const { version, backup, disk, database, library, queue } = stats.data;
 
   async function runBackupNow() {
     setBackingUp(true);
@@ -41,6 +41,12 @@ export function SystemPanel() {
       <Stat label="Photos" value={String(library.photos)} />
       <Stat label="Library" value={formatBytes(library.originalsBytes)} />
       <Stat label="Database" value={formatBytes(database.sizeBytes)} />
+      {disk.totalBytes > 0 && (
+        <span className={`flex items-center gap-1.5 ${disk.lowSpace ? "text-accent-500" : ""}`}>
+          <span className="font-medium text-text-2">Disk</span>
+          {formatBytes(disk.freeBytes)} free of {formatBytes(disk.totalBytes)}
+        </span>
+      )}
 
       <span className={`flex items-center gap-1.5 ${backup.isStale ? "text-accent-500" : ""}`}>
         {backup.isStale && (

@@ -24,6 +24,11 @@ export const config = {
   trustProxy: process.env.TRUST_PROXY === "true",
   uploadConcurrency: Number(process.env.UPLOAD_CONCURRENCY ?? 4),
   maxUploadFileSizeBytes: Number(process.env.MAX_UPLOAD_FILE_SIZE_BYTES ?? 50 * 1024 * 1024),
+  // Decompression-bomb ceiling. 100 MP comfortably covers real cameras (a
+  // 100MP medium-format frame is ~11600×8700), while rejecting crafted images
+  // that would balloon memory on decode. Arms both the upload probe and
+  // sharp's own limitInputPixels in the image pipeline.
+  maxImagePixels: Number(process.env.MAX_IMAGE_PIXELS ?? 100_000_000),
 };
 
 /** The signing key for gallery-access cookies. Zero-config by default: if the

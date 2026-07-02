@@ -15,6 +15,8 @@ export interface GalleryDTO {
   lastFavoriteAt: string | null;
   /** Zeroed on the list endpoint; populated on single-gallery GET/PATCH. */
   statusCounts: { pending: number; processing: number; failed: number };
+  /** Total bytes of originals; zeroed on the list endpoint. */
+  originalsBytes: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -36,6 +38,7 @@ export interface GalleryPublicDTO {
 export interface SystemStatsDTO {
   version: string;
   backup: { lastBackupAt: string | null; isStale: boolean };
+  disk: { totalBytes: number; freeBytes: number; lowSpace: boolean };
   database: { sizeBytes: number };
   library: { galleries: number; photos: number; originalsBytes: number };
   queue: { pending: number; processing: number; failed: number };

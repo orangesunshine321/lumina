@@ -77,6 +77,19 @@ describe("upload route", () => {
     expect(res.json()).toEqual({ error: "invalid_file_type" });
   });
 
+  it("rejects an over-100MP image (decompression-bomb guard)", async () => {
+    // A solid-color 12000×9000 (108MP) JPEG compresses to a few KB but would
+    // decode to ~324MB — exactly the shape of a decompression bomb.
+    const huge = await sharp({
+      create: { width: 12000, height: 9000, channels: 3, background: { r: 5, g: 5, b: 5 } },
+    })
+      .jpeg()
+      .toBuffer();
+    const res = await upload("DSC_HUGE.jpg", "image/jpeg", huge);
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ error: "image_too_large" });
+  });
+
   it("assigns distinct sortIndex values under concurrency (A1)", async () => {
     const buffers = await Promise.all([
       makeJpeg(100, 0, 0),

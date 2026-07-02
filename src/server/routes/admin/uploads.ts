@@ -123,12 +123,25 @@ export async function uploadRoutes(app: FastifyInstance) {
         return reply.code(413).send({ error: "file_too_large" });
       }
 
-      const meta = await sharp(tmpPath)
-        .metadata()
-        .catch(() => null);
+      // metadata() only reads the header, so it's cheap at any declared size —
+      // no limitInputPixels here, or it would throw before the explicit pixel
+      // check below can return the clean "image_too_large" error. The pipeline
+      // arms limitInputPixels for the actual decode.
+      const meta = await sharp(tmpPath).metadata().catch(() => null);
       if (!meta || meta.format !== "jpeg") {
         await rm(tmpPath, { force: true });
         return reply.code(400).send({ error: "invalid_file_type" });
+      }
+
+      // Decompression-bomb guard: a small file can declare enormous pixel
+      // dimensions that blow up memory when sharp decodes it. Reject anything
+      // whose pixel count exceeds the cap before any full decode happens.
+      // (config.maxImagePixels also arms sharp's own limitInputPixels in the
+      // pipeline, so this is defense in depth, not the only check.)
+      const pixels = (meta.width ?? 0) * (meta.height ?? 0);
+      if (pixels === 0 || pixels > config.maxImagePixels) {
+        await rm(tmpPath, { force: true });
+        return reply.code(400).send({ error: "image_too_large" });
       }
 
       const checksumSha256 = hash.digest("hex");

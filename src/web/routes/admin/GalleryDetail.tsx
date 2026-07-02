@@ -83,6 +83,7 @@ export function GalleryDetail() {
               {data.statusCounts.failed > 0 && (
                 <span className="text-accent-500"> · {data.statusCounts.failed} failed</span>
               )}
+              {data.originalsBytes > 0 && <> · {formatBytes(data.originalsBytes)}</>}
             </p>
           </div>
         </div>
@@ -186,4 +187,11 @@ function Section({ title, children }: { title: React.ReactNode; children: React.
       {children}
     </section>
   );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} B`;
 }

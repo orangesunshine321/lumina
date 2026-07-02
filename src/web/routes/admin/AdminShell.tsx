@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api.ts";
 import { getTheme, toggleTheme, type Theme } from "../../lib/theme.ts";
+import type { SystemStatsDTO } from "../../lib/types.ts";
 import { AccountDialog } from "./AccountDialog.tsx";
 
 interface BackupStatus {
@@ -25,6 +26,15 @@ export function AdminShell({
     staleTime: 5 * 60_000,
   });
 
+  // Shares the ["system"] key with SystemPanel, so this is a free read (one
+  // fetch, deduped). Only the low-disk flag is used here for the banner.
+  const system = useQuery({
+    queryKey: ["system"],
+    queryFn: () => api.get<SystemStatsDTO>("/api/admin/system"),
+    staleTime: 60_000,
+  });
+  const lowDisk = system.data?.disk.lowSpace ?? false;
+
   return (
     <div className="min-h-screen bg-canvas">
       <header className="sticky top-0 z-10 border-b border-line bg-canvas/80 backdrop-blur">
@@ -42,28 +52,41 @@ export function AdminShell({
         </div>
       </header>
 
+      {lowDisk && (
+        <Banner>
+          Disk space is running low on the server. Delete old galleries to free
+          space, or expand the volume — uploads will start failing when it fills.
+        </Banner>
+      )}
+
       {backupStatus.data?.isStale && (
-        <div className="border-b border-accent-500/20 bg-accent-500/10">
-          <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-2 text-xs text-accent-400 sm:px-6">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5 shrink-0">
-              <path
-                d="M12 9v4m0 4h.01M10.29 3.86l-8.18 14.18A1.5 1.5 0 0 0 3.34 20h17.32a1.5 1.5 0 0 0 1.23-1.96L13.71 3.86a1.5 1.5 0 0 0-2.42 0Z"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <span>
-              {backupStatus.data.lastBackupAt
-                ? `Database backup hasn't run recently (last: ${new Date(backupStatus.data.lastBackupAt).toLocaleString()}). Check the server logs.`
-                : "No database backup yet — one runs automatically shortly after the server starts."}
-            </span>
-          </div>
-        </div>
+        <Banner>
+          {backupStatus.data.lastBackupAt
+            ? `Database backup hasn't run recently (last: ${new Date(backupStatus.data.lastBackupAt).toLocaleString()}). Check the server logs.`
+            : "No database backup yet — one runs automatically shortly after the server starts."}
+        </Banner>
       )}
 
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">{children}</main>
 
       {accountOpen && <AccountDialog email={admin.email} onClose={() => setAccountOpen(false)} />}
+    </div>
+  );
+}
+
+function Banner({ children }: { children: ReactNode }) {
+  return (
+    <div className="border-b border-accent-500/20 bg-accent-500/10">
+      <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-2 text-xs text-accent-400 sm:px-6">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5 shrink-0">
+          <path
+            d="M12 9v4m0 4h.01M10.29 3.86l-8.18 14.18A1.5 1.5 0 0 0 3.34 20h17.32a1.5 1.5 0 0 0 1.23-1.96L13.71 3.86a1.5 1.5 0 0 0-2.42 0Z"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        <span>{children}</span>
+      </div>
     </div>
   );
 }

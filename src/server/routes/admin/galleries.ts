@@ -17,6 +17,9 @@ interface GalleryDTO {
   allowDownloads: boolean;
   lastFavoriteAt: string | null;
   statusCounts: { pending: number; processing: number; failed: number };
+  /** Total bytes of originals in this gallery. Zeroed on the list endpoint;
+   * populated on the single-gallery GET/PATCH (like statusCounts). */
+  originalsBytes: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -25,6 +28,7 @@ interface GalleryExtras {
   favoriteCount: number;
   lastFavoriteAt?: Date | null;
   statusCounts?: { pending: number; processing: number; failed: number };
+  originalsBytes?: number;
 }
 
 const ZERO_COUNTS = { pending: 0, processing: 0, failed: 0 };
@@ -41,6 +45,7 @@ function toDTO(row: typeof schema.galleries.$inferSelect, extras: GalleryExtras)
     allowDownloads: row.allowDownloads,
     lastFavoriteAt: extras.lastFavoriteAt ? extras.lastFavoriteAt.toISOString() : null,
     statusCounts: extras.statusCounts ?? ZERO_COUNTS,
+    originalsBytes: extras.originalsBytes ?? 0,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -56,21 +61,28 @@ async function extrasFor(galleryId: string): Promise<GalleryExtras> {
     .where(eq(schema.favorites.galleryId, galleryId));
 
   const statusRows = await db
-    .select({ status: schema.photos.status, count: sql<number>`count(*)` })
+    .select({
+      status: schema.photos.status,
+      count: sql<number>`count(*)`,
+      bytes: sql<number>`coalesce(sum(${schema.photos.byteSize}), 0)`,
+    })
     .from(schema.photos)
     .where(eq(schema.photos.galleryId, galleryId))
     .groupBy(schema.photos.status);
   const statusCounts = { ...ZERO_COUNTS };
+  let originalsBytes = 0;
   for (const row of statusRows) {
     if (row.status === "pending") statusCounts.pending = row.count;
     if (row.status === "processing") statusCounts.processing = row.count;
     if (row.status === "failed") statusCounts.failed = row.count;
+    originalsBytes += row.bytes;
   }
 
   return {
     favoriteCount: favorites?.count ?? 0,
     lastFavoriteAt: favorites?.lastAt ? new Date(favorites.lastAt) : null,
     statusCounts,
+    originalsBytes,
   };
 }
 

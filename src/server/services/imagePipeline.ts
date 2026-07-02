@@ -1,6 +1,7 @@
 import sharp from "sharp";
 import exifr from "exifr";
 import { rgbaToThumbHash } from "thumbhash";
+import { config } from "../config.ts";
 import { derivedPath, ensurePhotoDerivedDir, type DerivedVariant } from "../lib/storage.ts";
 
 const DERIVATIVE_SPECS: Record<DerivedVariant, { size: number; quality: number }> = {
@@ -9,6 +10,14 @@ const DERIVATIVE_SPECS: Record<DerivedVariant, { size: number; quality: number }
   preview: { size: 1600, quality: 85 },
   preview2x: { size: 2400, quality: 85 },
 };
+
+/** Every sharp() in the pipeline goes through here so `limitInputPixels` is
+ * always armed — sharp throws rather than decoding a decompression bomb into
+ * memory. The upload route rejects oversized images earlier; this backstops
+ * anything already on disk (e.g. a re-processed original). */
+function openImage(path: string) {
+  return sharp(path, { limitInputPixels: config.maxImagePixels });
+}
 
 export interface ProcessedPhoto {
   width: number | null;
@@ -27,7 +36,7 @@ export async function processPhoto(
 ): Promise<ProcessedPhoto> {
   await ensurePhotoDerivedDir(galleryId, photoId);
 
-  const meta = await sharp(originalPath).metadata();
+  const meta = await openImage(originalPath).metadata();
   const orientation = meta.orientation ?? 1;
   const swapped = orientation >= 5 && orientation <= 8;
   // null (not 0) when sharp can't report a dimension: the frontend's
@@ -39,7 +48,7 @@ export async function processPhoto(
   await Promise.all(
     (Object.keys(DERIVATIVE_SPECS) as DerivedVariant[]).map(async (variant) => {
       const { size, quality } = DERIVATIVE_SPECS[variant];
-      await sharp(originalPath)
+      await openImage(originalPath)
         .rotate() // auto-orient from EXIF, then strip the Orientation tag
         .resize({ width: size, height: size, fit: "inside", withoutEnlargement: true })
         .webp({ quality })
@@ -54,7 +63,7 @@ export async function processPhoto(
 }
 
 async function computeThumbHash(originalPath: string): Promise<string> {
-  const { data, info } = await sharp(originalPath)
+  const { data, info } = await openImage(originalPath)
     .rotate()
     .resize({ width: 100, height: 100, fit: "inside", withoutEnlargement: true })
     .raw()
