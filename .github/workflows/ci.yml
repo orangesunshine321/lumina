@@ -18,6 +18,11 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      # Fail the build on a high/critical vuln in the serving-path (prod) deps.
+      # Dev-only advisories (e.g. build tooling) don't gate — they can't reach
+      # a running instance.
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
 
   docker:
     runs-on: ubuntu-latest

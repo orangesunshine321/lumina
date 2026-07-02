@@ -16,10 +16,34 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-    # On low-RAM hardware (e.g. a 2GB NAS), uncomment to bound the container —
-    # concurrent image processing is the main consumer; lower
-    # UPLOAD_CONCURRENCY below if you hit this limit during big uploads.
-    # mem_limit: 1g
+    # --- Container hardening (safe defaults for a public/VPS host) -----------
+    # Read-only root filesystem: the app never writes outside /data (a volume)
+    # or /tmp (a tmpfs below), so an RCE can't tamper with the image.
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+      # gosu drops to the `lumina` user, whose home may see scratch writes.
+      - /home/lumina:size=16m
+    # Drop every Linux capability, then add back only what the entrypoint needs
+    # to fix /data ownership and drop privileges (chown + gosu). The app itself,
+    # running unprivileged, uses none of these.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETUID
+      - SETGID
+    security_opt:
+      - no-new-privileges:true
+    # Fork-bomb / thread-exhaustion backstop. Node + libvips' thread pool stay
+    # well under this.
+    pids_limit: 512
+    # Bounds a runaway so it can't take the whole host down. Generous for the
+    # default 4-way image processing; on a small box, lower UPLOAD_CONCURRENCY
+    # rather than this. Comment out to use all host memory.
+    mem_limit: 2g
     ports:
       # Loopback-only: your reverse proxy (Caddy/Nginx/Cloudflare Tunnel) is
       # the sole public entry point and terminates TLS. If your reverse proxy

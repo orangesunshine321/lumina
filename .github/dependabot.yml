@@ -1,0 +1,27 @@
+version: 2
+updates:
+  # npm dependencies — the serving-path libraries (Fastify, sharp/libvips,
+  # jose, better-sqlite3) are where a CVE would actually reach a running
+  # instance, so keep them current. Grouped so a routine bump is one PR.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      production:
+        dependency-type: production
+      development:
+        dependency-type: development
+
+  # Keep the CI/release GitHub Actions pinned versions fresh.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  # And the base image / apt tooling in the Dockerfile.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
