@@ -48,11 +48,26 @@ export async function processPhoto(
   await Promise.all(
     (Object.keys(DERIVATIVE_SPECS) as DerivedVariant[]).map(async (variant) => {
       const { size, quality } = DERIVATIVE_SPECS[variant];
-      await openImage(originalPath)
-        .rotate() // auto-orient from EXIF, then strip the Orientation tag
-        .resize({ width: size, height: size, fit: "inside", withoutEnlargement: true })
+      // A single decode+resize pipeline, cloned per output format so the
+      // source is read once. .rotate() auto-orients from EXIF then strips the
+      // tag; withoutEnlargement keeps tiny originals from being upscaled.
+      const resized = openImage(originalPath)
+        .rotate()
+        .resize({ width: size, height: size, fit: "inside", withoutEnlargement: true });
+
+      await resized
+        .clone()
         .webp({ quality })
-        .toFile(derivedPath(galleryId, photoId, variant));
+        .toFile(derivedPath(galleryId, photoId, variant, "webp"));
+
+      if (config.generateAvif) {
+        // effort 4 balances encode speed against size; AVIF quality maps a bit
+        // lower than WebP for the same visual result.
+        await resized
+          .clone()
+          .avif({ quality: quality - 5, effort: 4 })
+          .toFile(derivedPath(galleryId, photoId, variant, "avif"));
+      }
     }),
   );
 

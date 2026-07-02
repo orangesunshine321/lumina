@@ -3,12 +3,13 @@ import { join } from "node:path";
 import { config } from "../config.ts";
 
 export type DerivedVariant = "thumb" | "thumb2x" | "preview" | "preview2x";
+export type DerivedFormat = "webp" | "avif";
 
-const DERIVED_FILENAMES: Record<DerivedVariant, string> = {
-  thumb: "thumb.webp",
-  thumb2x: "thumb@2x.webp",
-  preview: "preview.webp",
-  preview2x: "preview@2x.webp",
+const DERIVED_STEMS: Record<DerivedVariant, string> = {
+  thumb: "thumb",
+  thumb2x: "thumb@2x",
+  preview: "preview",
+  preview2x: "preview@2x",
 };
 
 export function galleryOriginalsDir(galleryId: string): string {
@@ -27,8 +28,13 @@ export function originalPath(galleryId: string, photoId: string, fileExt: string
   return join(galleryOriginalsDir(galleryId), `${photoId}.${fileExt.replace(/^\./, "")}`);
 }
 
-export function derivedPath(galleryId: string, photoId: string, variant: DerivedVariant): string {
-  return join(photoDerivedDir(galleryId, photoId), DERIVED_FILENAMES[variant]);
+export function derivedPath(
+  galleryId: string,
+  photoId: string,
+  variant: DerivedVariant,
+  format: DerivedFormat = "webp",
+): string {
+  return join(photoDerivedDir(galleryId, photoId), `${DERIVED_STEMS[variant]}.${format}`);
 }
 
 export async function ensureGalleryDirs(galleryId: string): Promise<void> {

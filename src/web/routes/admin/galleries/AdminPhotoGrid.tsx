@@ -542,6 +542,7 @@ function PhotoTile({
             }
           : undefined
       }
+      style={{ contentVisibility: "auto", containIntrinsicSize: "auto 200px" }}
       className={`group relative aspect-square overflow-hidden rounded-lg bg-surface-2 outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-text-1 ${
         clickable ? "cursor-pointer" : ""
       } ${isSelected ? "ring-2 ring-text-1 ring-offset-2 ring-offset-canvas" : ""}`}

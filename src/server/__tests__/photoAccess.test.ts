@@ -66,6 +66,26 @@ describe("photo byte access control", () => {
     expect(res.statusCode).toBe(200);
     expect(res.rawPayload.length).toBe(FILE_SIZE);
     expect(res.headers["content-type"]).toBe("image/webp");
+    expect(res.headers["vary"]).toContain("Accept");
+  });
+
+  it("serves AVIF when the browser advertises it and the file exists", async () => {
+    const avifBytes = Buffer.from("fake-avif-bytes");
+    await writeFile(derivedPath(gallery.id, photoId, "thumb", "avif"), avifBytes);
+
+    const withAvif = await fetchThumb(
+      { [`lumina_gallery_${gallery.id}`]: galleryCookie },
+      { accept: "image/avif,image/webp,*/*" },
+    );
+    expect(withAvif.headers["content-type"]).toBe("image/avif");
+    expect(withAvif.rawPayload.length).toBe(avifBytes.length);
+
+    // A client that doesn't advertise AVIF still gets WebP.
+    const noAvif = await fetchThumb(
+      { [`lumina_gallery_${gallery.id}`]: galleryCookie },
+      { accept: "image/webp,*/*" },
+    );
+    expect(noAvif.headers["content-type"]).toBe("image/webp");
   });
 
   it("allows an admin session", async () => {

@@ -29,6 +29,10 @@ export const config = {
   // that would balloon memory on decode. Arms both the upload probe and
   // sharp's own limitInputPixels in the image pipeline.
   maxImagePixels: Number(process.env.MAX_IMAGE_PIXELS ?? 100_000_000),
+  // Also emit AVIF derivatives (smaller than WebP → faster galleries on mobile
+  // data), served to supporting browsers via Accept negotiation. Costs extra
+  // background encode time; set GENERATE_AVIF=false on slow hardware to skip.
+  generateAvif: process.env.GENERATE_AVIF !== "false",
 };
 
 /** The signing key for gallery-access cookies. Zero-config by default: if the

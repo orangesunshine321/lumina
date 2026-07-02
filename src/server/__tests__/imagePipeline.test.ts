@@ -49,6 +49,15 @@ describe("imagePipeline", () => {
     }
   });
 
+  it("also writes AVIF derivatives (default on)", async () => {
+    for (const variant of ["thumb", "thumb2x", "preview", "preview2x"] as const) {
+      const info = await stat(derivedPath(GALLERY_ID, PHOTO_ID, variant, "avif"));
+      expect(info.size).toBeGreaterThan(0);
+      const meta = await sharp(derivedPath(GALLERY_ID, PHOTO_ID, variant, "avif")).metadata();
+      expect(meta.format).toBe("heif"); // sharp reports AVIF as heif/av01
+    }
+  });
+
   it("derivatives never exceed their size caps or the original", async () => {
     const thumb = await sharp(derivedPath(GALLERY_ID, PHOTO_ID, "thumb")).metadata();
     expect(Math.max(thumb.width ?? 0, thumb.height ?? 0)).toBeLessThanOrEqual(480);

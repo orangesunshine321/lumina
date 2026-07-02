@@ -123,9 +123,14 @@
 }
 
 /* Client gallery tiles: pointer affordance everywhere; a whisper of zoom on
-   devices that actually hover. Touch devices skip it entirely. */
+   devices that actually hover. Touch devices skip it entirely.
+   content-visibility lets the browser skip layout/paint for off-screen tiles,
+   which is what keeps a 2000-photo gallery scrolling smoothly; the tile's
+   height comes from its aspect-ratio padding, so nothing jumps. */
 .pg-tile {
   cursor: pointer;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 240px;
 }
 
 @media (hover: hover) {

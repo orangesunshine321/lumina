@@ -66,8 +66,19 @@ export async function photoRoutes(app: FastifyInstance) {
         if (photo.status !== "ready") {
           return reply.code(404).send({ error: "not_ready" });
         }
-        filePath = derivedPath(photo.galleryId, photo.id, variant as DerivedVariant);
-        contentType = "image/webp";
+        // Content negotiation: hand AVIF to browsers that advertise it (all
+        // AVIF-capable browsers send `Accept: …image/avif…`), falling back to
+        // WebP. Vary: Accept so a shared cache can't serve the wrong format.
+        reply.header("Vary", "Accept");
+        const wantsAvif = (request.headers.accept ?? "").includes("image/avif");
+        const avifPath = derivedPath(photo.galleryId, photo.id, variant as DerivedVariant, "avif");
+        if (wantsAvif && (await fileExists(avifPath))) {
+          filePath = avifPath;
+          contentType = "image/avif";
+        } else {
+          filePath = derivedPath(photo.galleryId, photo.id, variant as DerivedVariant, "webp");
+          contentType = "image/webp";
+        }
       }
 
       let fileStat;
@@ -101,6 +112,15 @@ export async function photoRoutes(app: FastifyInstance) {
       return reply.send(createReadStream(filePath));
     },
   );
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** RFC 9110 single-range parsing, including suffix ranges (`bytes=-500` =
