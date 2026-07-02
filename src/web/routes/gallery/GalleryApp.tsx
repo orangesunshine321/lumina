@@ -123,6 +123,14 @@ export function GalleryApp() {
           )}
 
           <div className="flex flex-1 items-center justify-end gap-1 sm:flex-none">
+            {gallery.favoriteCount > 0 && (
+              <SubmitSelection
+                slug={slug}
+                favoriteCount={gallery.favoriteCount}
+                submittedAt={gallery.selectionSubmittedAt}
+                onSubmitted={() => queryClient.invalidateQueries({ queryKey })}
+              />
+            )}
             {gallery.allowDownloads && gallery.photoCount > 0 && (
               <DownloadMenu slug={slug} favoriteCount={gallery.favoriteCount} />
             )}
@@ -245,6 +253,120 @@ function ThemeToggle() {
         </svg>
       )}
     </button>
+  );
+}
+
+function SubmitSelection({
+  slug,
+  favoriteCount,
+  submittedAt,
+  onSubmitted,
+}: {
+  slug: string;
+  favoriteCount: number;
+  submittedAt: string | null;
+  onSubmitted: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [justSent, setJustSent] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open]);
+
+  async function send() {
+    setBusy(true);
+    try {
+      await api.post(`/api/gallery/${slug}/submit`, { note: note.trim() || undefined });
+      setJustSent(true);
+      onSubmitted();
+      setTimeout(() => {
+        setOpen(false);
+        setJustSent(false);
+      }, 1600);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const alreadySent = Boolean(submittedAt);
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className={`tap-target rounded-full px-4 text-sm font-medium transition-colors ${
+          alreadySent
+            ? "text-text-2 hover:bg-surface-2"
+            : "bg-text-1 text-invert hover:opacity-90"
+        }`}
+      >
+        {alreadySent ? "Picks sent ✓" : "Send my picks"}
+      </button>
+
+      {open && (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 px-4"
+          onClick={() => setOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Send your selection"
+            className="w-full max-w-sm rounded-2xl border border-line-strong bg-surface p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {justSent ? (
+              <div className="py-4 text-center">
+                <p className="font-display text-lg text-text-1">Sent to your photographer</p>
+                <p className="mt-1 text-sm text-text-3">
+                  You can keep favoriting and send an updated selection any time.
+                </p>
+              </div>
+            ) : (
+              <>
+                <h2 className="font-display text-lg text-text-1">
+                  Send your {favoriteCount} {favoriteCount === 1 ? "favorite" : "favorites"}
+                </h2>
+                <p className="mt-1 text-sm text-text-3">
+                  Let your photographer know these are your picks. You can add a note if you'd like.
+                </p>
+                <textarea
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  rows={3}
+                  maxLength={2000}
+                  placeholder="Optional note (e.g. crop the third one tighter)…"
+                  className="mt-4 w-full resize-none rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-text-1 outline-none transition-colors focus:border-line-strong"
+                />
+                <div className="mt-4 flex justify-end gap-2">
+                  <button
+                    onClick={() => setOpen(false)}
+                    className="rounded-lg px-4 py-2 text-sm font-medium text-text-2 hover:bg-surface-2"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => void send()}
+                    disabled={busy}
+                    className="rounded-lg bg-text-1 px-4 py-2 text-sm font-medium text-invert transition-opacity hover:opacity-90 disabled:opacity-50"
+                  >
+                    {busy ? "Sending…" : alreadySent ? "Send again" : "Send"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

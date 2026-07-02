@@ -16,6 +16,7 @@ import {
 } from "../../services/auth.ts";
 import { checkRateLimit, recordAttempt } from "../../services/rateLimiter.ts";
 import { streamGalleryZip } from "../../services/zip.ts";
+import { notifySelectionSubmitted } from "../../services/notify.ts";
 import { ensureClientToken, getClientIp } from "../../lib/http.ts";
 import { config } from "../../config.ts";
 
@@ -76,6 +77,8 @@ export async function publicGalleryRoutes(app: FastifyInstance) {
       favoriteCount,
       allowDownloads: hasAccess ? gallery.allowDownloads : false,
       coverPhotoId: hasAccess ? gallery.coverPhotoId : null,
+      selectionSubmittedAt:
+        hasAccess && gallery.selectionSubmittedAt ? gallery.selectionSubmittedAt.toISOString() : null,
     };
   });
 
@@ -232,6 +235,46 @@ export async function publicGalleryRoutes(app: FastifyInstance) {
         })
         .onConflictDoNothing();
       return { favorited: true };
+    },
+  );
+
+  /** The client marks their picks final. Records the moment (the "needs
+   * attention" signal for the photographer), stores an optional note, and
+   * fires the webhook if one is configured. Re-submittable — a client can add
+   * more favorites and send again. */
+  app.post<{ Params: { slug: string }; Body: { note?: string } }>(
+    "/api/gallery/:slug/submit",
+    {
+      preHandler: requireGalleryAccess,
+      schema: {
+        body: {
+          type: "object",
+          properties: { note: { type: "string", maxLength: 2000 } },
+        },
+      },
+    },
+    async (request) => {
+      const gallery = request.gallery!;
+      const note = request.body?.note?.trim() || null;
+
+      await db
+        .update(schema.galleries)
+        .set({ selectionSubmittedAt: new Date(), selectionNote: note, updatedAt: new Date() })
+        .where(eq(schema.galleries.id, gallery.id));
+
+      const [fav] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(schema.favorites)
+        .where(eq(schema.favorites.galleryId, gallery.id));
+
+      // Fire-and-forget — the client's response doesn't wait on the webhook.
+      void notifySelectionSubmitted({
+        galleryTitle: gallery.title,
+        favoriteCount: fav?.count ?? 0,
+        note,
+      });
+
+      return { ok: true, favoriteCount: fav?.count ?? 0 };
     },
   );
 }

@@ -91,6 +91,16 @@ export function GalleryDetail() {
         <ShareBar slug={data.slug} />
       </div>
 
+      {data.selectionSubmittedAt && (
+        <SelectionBanner
+          galleryId={id}
+          submittedAt={data.selectionSubmittedAt}
+          note={data.selectionNote}
+          favoriteCount={data.favoriteCount}
+          onReviewed={handleUpdated}
+        />
+      )}
+
       <Section title="Upload">
         <ErrorBoundary label="the upload panel">
           <UploadPanel galleryId={id} />
@@ -178,6 +188,71 @@ function ShareBar({ slug }: { slug: string }) {
       </a>
     </div>
   );
+}
+
+function SelectionBanner({
+  galleryId,
+  submittedAt,
+  note,
+  favoriteCount,
+  onReviewed,
+}: {
+  galleryId: string;
+  submittedAt: string;
+  note: string | null;
+  favoriteCount: number;
+  onReviewed: (gallery: GalleryDTO) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  async function markReviewed() {
+    setBusy(true);
+    try {
+      const updated = await api.post<GalleryDTO>(`/api/admin/galleries/${galleryId}/selection/reviewed`);
+      onReviewed(updated);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-text-1/15 bg-surface-2 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-text-1">
+            Your client submitted their selection
+          </p>
+          <p className="mt-0.5 text-xs text-text-3">
+            {favoriteCount} {favoriteCount === 1 ? "favorite" : "favorites"} ·{" "}
+            {relativeTime(submittedAt)}. Copy the Lightroom list below to pull them in.
+          </p>
+        </div>
+        <button
+          onClick={() => void markReviewed()}
+          disabled={busy}
+          className="shrink-0 rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-text-1 transition-colors hover:bg-surface-3 disabled:opacity-50"
+        >
+          {busy ? "…" : "Mark as reviewed"}
+        </button>
+      </div>
+      {note && (
+        <p className="mt-3 rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-text-2">
+          <span className="font-medium text-text-1">Note from client:</span> {note}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.round(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours} ${hours === 1 ? "hour" : "hours"} ago`;
+  const days = Math.round(hours / 24);
+  return `${days} ${days === 1 ? "day" : "days"} ago`;
 }
 
 function Section({ title, children }: { title: React.ReactNode; children: React.ReactNode }) {

@@ -6,6 +6,7 @@ interface Me {
   email: string;
   twoFactorEnabled: boolean;
   backupCodesRemaining: number;
+  webhookUrl: string | null;
 }
 
 export function AccountDialog({ email, onClose }: { email: string; onClose: () => void }) {
@@ -53,10 +54,71 @@ export function AccountDialog({ email, onClose }: { email: string; onClose: () =
           onChanged={() => queryClient.invalidateQueries({ queryKey: ["admin-me"] })}
         />
         <div className="my-6 border-t border-line" />
+        <WebhookSection
+          onChanged={() => queryClient.invalidateQueries({ queryKey: ["admin-me"] })}
+        />
+        <div className="my-6 border-t border-line" />
         <ChangeEmailForm
           onChanged={() => queryClient.invalidateQueries({ queryKey: ["admin-me"] })}
         />
       </div>
+    </div>
+  );
+}
+
+function WebhookSection({ onChanged }: { onChanged: () => void }) {
+  const me = useQuery({ queryKey: ["admin-me"], queryFn: () => api.get<Me>("/api/admin/me") });
+  const [url, setUrl] = useState<string | null>(null);
+  const value = url ?? me.data?.webhookUrl ?? "";
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save(next: string | null) {
+    setSaving(true);
+    setError(null);
+    setSaved(false);
+    try {
+      const res = await api.post<{ webhookUrl: string | null }>("/api/admin/account/webhook", {
+        webhookUrl: next,
+      });
+      setUrl(res.webhookUrl ?? "");
+      onChanged();
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1600);
+    } catch (err) {
+      setError(err instanceof ApiError && err.message === "invalid_url" ? "That doesn't look like a URL." : "Couldn't save.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div>
+        <h3 className="text-sm font-medium text-text-1">Notifications</h3>
+        <p className="mt-0.5 text-xs text-text-3">
+          Optional webhook pinged when a client submits their selection — paste a Discord, Slack, or
+          ntfy URL.
+        </p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="url"
+          value={value}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://…"
+          className="min-w-0 flex-1 rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-text-1 outline-none transition-colors focus:border-line-strong"
+        />
+        <button
+          onClick={() => void save(value.trim() || null)}
+          disabled={saving}
+          className="rounded-lg border border-line px-4 py-2 text-sm font-medium text-text-1 transition-colors hover:bg-surface-3 disabled:opacity-50"
+        >
+          {saving ? "Saving…" : saved ? "Saved" : "Save"}
+        </button>
+      </div>
+      {error && <p className="text-sm text-accent-500">{error}</p>}
     </div>
   );
 }

@@ -13,6 +13,7 @@ import {
   generateTotpEnrollment,
   verifyTotpCode,
 } from "../../services/totp.ts";
+import { setWebhookUrl } from "../../services/notify.ts";
 
 export async function accountRoutes(app: FastifyInstance) {
   app.addHook("preHandler", requireAdmin);
@@ -102,6 +103,29 @@ export async function accountRoutes(app: FastifyInstance) {
     reply.clearCookie(ADMIN_SESSION_COOKIE, { path: "/" });
     return { ok: true };
   });
+
+  /** Set (or clear, with null/empty) the webhook pinged when a client submits
+   * their selection. Works with Discord, Slack, ntfy, or any endpoint. */
+  app.post<{ Body: { webhookUrl: string | null } }>(
+    "/api/admin/account/webhook",
+    {
+      schema: {
+        body: {
+          type: "object",
+          required: ["webhookUrl"],
+          properties: { webhookUrl: { type: ["string", "null"], maxLength: 2000 } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const url = request.body.webhookUrl;
+      if (url && !/^https?:\/\//i.test(url.trim())) {
+        return reply.code(400).send({ error: "invalid_url" });
+      }
+      await setWebhookUrl(request.adminSession!.adminId, url);
+      return { ok: true, webhookUrl: url && url.trim().length > 0 ? url.trim() : null };
+    },
+  );
 
   // --- Two-factor authentication (TOTP) ------------------------------------
 

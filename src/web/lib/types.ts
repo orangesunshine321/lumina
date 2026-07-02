@@ -19,6 +19,9 @@ export interface GalleryDTO {
   originalsBytes: number;
   archivedAt: string | null;
   expiresAt: string | null;
+  /** Set when the client submitted their picks; cleared when marked reviewed. */
+  selectionSubmittedAt: string | null;
+  selectionNote: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -37,6 +40,8 @@ export interface GalleryPublicDTO {
   allowDownloads: boolean;
   /** Cover photo for the hero header; null until access is granted. */
   coverPhotoId: string | null;
+  /** When the client last submitted their selection (past the gate); null if never. */
+  selectionSubmittedAt: string | null;
 }
 
 export interface SystemStatsDTO {

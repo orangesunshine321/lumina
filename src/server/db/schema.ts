@@ -15,6 +15,9 @@ export const adminUsers = sqliteTable("admin_users", {
   // JSON array of { hash, usedAt } — single-use recovery codes (sha256-hashed,
   // safe because they're high-entropy random, not user-chosen).
   totpBackupCodes: text("totp_backup_codes"),
+  // Optional outgoing webhook (Discord/Slack/ntfy/…) pinged when a client
+  // submits their selection. Stored on the singleton admin row.
+  notifyWebhookUrl: text("notify_webhook_url"),
   createdAt: timestamp("created_at"),
   updatedAt: timestamp("updated_at"),
 });
@@ -57,6 +60,12 @@ export const galleries = sqliteTable(
     // Optional link lifetime: once past, the public link stops working (admins
     // still have full access). Null = never expires.
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }),
+    // Set when the client submits their picks as final; cleared when the
+    // photographer marks the gallery reviewed. The "needs attention" signal.
+    selectionSubmittedAt: integer("selection_submitted_at", { mode: "timestamp_ms" }),
+    // Optional message the client left with their submission; persists for
+    // reference even after the submission is marked reviewed.
+    selectionNote: text("selection_note"),
     createdAt: timestamp("created_at"),
     updatedAt: timestamp("updated_at"),
   },

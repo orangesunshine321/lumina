@@ -27,13 +27,14 @@ Upload a batch of exported JPEGs, share a private gallery link with your client 
 - Create a gallery per shoot and **bulk-upload** exported JPEGs by drag-and-drop, with live per-file and overall progress. Thumbnails and previews are generated in the background, so the grid fills in as you watch — no waiting for the whole batch. Interrupted mid-upload? Re-select the same folder; already-uploaded files are detected and skipped.
 - **Manage photos** in place: review any shot full-size in a lightbox, delete in bulk, retry failed processing, set a **cover photo**, and re-sort the whole gallery by **capture time** (fixes interleaved multi-camera shoots) or filename.
 - **The Lightroom pick-list export** — the headline feature. One click copies your client's favorites as a filename list you paste into Lightroom's Library Filter. [How it works ↓](#the-lightroom-workflow)
-- **Account management** built in: change your email or password (which signs out every other device), or sign out everywhere.
+- **Know when picks are ready** — clients tap "Send my picks" (with an optional note) to submit their selection; you get a "Picks ready" badge and can be pinged on a webhook (Discord, Slack, ntfy). No more guessing whether they're done.
+- **Account management** built in: change your email or password (which signs out every other device), sign out everywhere, or turn on two-factor authentication.
 - **Automatic backups** of the database daily, plus on-demand snapshots you can download straight from the dashboard.
 
 **For your client (no account, ever):**
 
 - A fast, responsive gallery — **dark by default**, with a light option — built around a justified photo grid and a full-screen lightbox with pinch-to-zoom.
-- **Favorite** photos with a tap; picks persist across visits and devices with no login. A **Favorites filter** lets them review just their selections.
+- **Favorite** photos with a tap; picks persist across visits and devices with no login. A **Favorites filter** lets them review just their selections, and a **Send my picks** button submits the final set to you.
 - Optional **downloads**, off by default and enabled per gallery: full-resolution originals, individually or as a zip.
 
 **For hosting:**

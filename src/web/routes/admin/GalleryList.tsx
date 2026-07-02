@@ -202,6 +202,11 @@ function GalleryCard({ gallery }: { gallery: GalleryDTO }) {
           </span>
         )}
         <div className="absolute left-3 top-3 flex gap-1.5">
+          {gallery.selectionSubmittedAt && (
+            <span className="rounded-full bg-text-1 px-2 py-0.5 text-[10px] font-medium text-invert shadow-sm">
+              Picks ready
+            </span>
+          )}
           {gallery.archivedAt && (
             <span className="rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm">
               Archived

@@ -110,6 +110,7 @@ export async function adminAuthRoutes(app: FastifyInstance) {
         email: schema.adminUsers.email,
         totpEnabledAt: schema.adminUsers.totpEnabledAt,
         totpBackupCodes: schema.adminUsers.totpBackupCodes,
+        notifyWebhookUrl: schema.adminUsers.notifyWebhookUrl,
       })
       .from(schema.adminUsers)
       .where(eq(schema.adminUsers.id, request.adminSession!.adminId))
@@ -120,6 +121,7 @@ export async function adminAuthRoutes(app: FastifyInstance) {
       email: admin.email,
       twoFactorEnabled: Boolean(admin.totpEnabledAt),
       backupCodesRemaining: countUnusedBackupCodes(admin.totpBackupCodes),
+      webhookUrl: admin.notifyWebhookUrl,
     };
   });
 }

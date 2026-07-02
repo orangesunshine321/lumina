@@ -17,6 +17,8 @@ interface GalleryDTO {
   allowDownloads: boolean;
   archivedAt: string | null;
   expiresAt: string | null;
+  selectionSubmittedAt: string | null;
+  selectionNote: string | null;
   lastFavoriteAt: string | null;
   statusCounts: { pending: number; processing: number; failed: number };
   /** Total bytes of originals in this gallery. Zeroed on the list endpoint;
@@ -47,6 +49,8 @@ function toDTO(row: typeof schema.galleries.$inferSelect, extras: GalleryExtras)
     allowDownloads: row.allowDownloads,
     archivedAt: row.archivedAt ? row.archivedAt.toISOString() : null,
     expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,
+    selectionSubmittedAt: row.selectionSubmittedAt ? row.selectionSubmittedAt.toISOString() : null,
+    selectionNote: row.selectionNote,
     lastFavoriteAt: extras.lastFavoriteAt ? extras.lastFavoriteAt.toISOString() : null,
     statusCounts: extras.statusCounts ?? ZERO_COUNTS,
     originalsBytes: extras.originalsBytes ?? 0,
@@ -339,6 +343,22 @@ export async function galleryAdminRoutes(app: FastifyInstance) {
       reassign();
 
       return { ok: true, reordered: sorted.length };
+    },
+  );
+
+  /** Dismiss the "selection submitted" signal once the photographer has acted
+   * on the picks. The note is kept for reference. */
+  app.post<{ Params: { id: string } }>(
+    "/api/admin/galleries/:id/selection/reviewed",
+    async (request, reply) => {
+      const gallery = await findGallery(request.params.id);
+      if (!gallery) return reply.code(404).send({ error: "not_found" });
+      const [updated] = await db
+        .update(schema.galleries)
+        .set({ selectionSubmittedAt: null, updatedAt: new Date() })
+        .where(eq(schema.galleries.id, gallery.id))
+        .returning();
+      return toDTO(updated!, await extrasFor(gallery.id));
     },
   );
 
