@@ -54,6 +54,37 @@ one-line installer, then put Caddy in front — see the reverse-proxy section in
 the README for the 3-line Caddyfile. Point your domain's DNS at the VPS first
 so Caddy can issue certificates.
 
+## Home server vs. a cloud server
+
+Both work, and switching between them needs zero code changes — same image,
+same compose file, same `./data` layout. The one thing worth knowing: on a
+home connection, your **upload** bandwidth is shared between your own photo
+uploads *and* every client browsing a gallery, and most home connections are
+far slower up than down. So if galleries feel sluggish for clients, that's
+almost always why — not the app.
+
+If that becomes a problem, move to a small VPS. Your one-time upload of a shoot
+still rides your home connection but happens once, in the background; every
+client view afterward is served from the VPS's much faster, usually symmetric
+bandwidth. Cloudflare Tunnel (Option A) works identically in both places, so
+the move is just: install on the VPS, copy your `./data` over, done.
+
+## Verifying without a domain
+
+To confirm Pixset works end-to-end over a real public URL before committing a
+domain, run a Cloudflare **quick tunnel** — no account, token, or domain
+needed. Alongside a running Pixset:
+
+```bash
+docker run --rm --network <your-compose-network> cloudflare/cloudflared:latest \
+  tunnel --no-autoupdate --url http://app:3000
+```
+
+It prints a temporary `https://<random>.trycloudflare.com` address that proxies
+to your instance. Every code path a real deployment uses — HTTPS, secure
+cookies, the setup code, galleries, favorites, downloads — runs over it. (This
+exact test is part of how each release is validated.)
+
 ## Security checklist before going public
 
 Pixset is designed to sit on the open internet behind any of the above, but

@@ -1,26 +1,62 @@
 # Pixset
 
-A self-hosted, leaner alternative to Pixieset for one specific workflow: share a batch of exported JPEGs with a client, let them pick favorites in a fast, private gallery, and pull those picks straight back into Lightroom Classic to flag them for editing.
+**Self-hosted client photo proofing with a one-click Lightroom pick-list export — a lean alternative to Pixieset.**
 
-## What this is (and isn't)
+Upload a batch of exported JPEGs, share a private gallery link with your client (with an optional password), let them favorite photos with no account required, then pull those picks straight back into Lightroom Classic to flag for editing. That's the whole product — one workflow, done well, running entirely on your own hardware.
 
-**In scope:** galleries, bulk upload with live processing status, a fast justified photo grid with a lightbox, client favoriting (no client account needed), a one-click "Lightroom copy list" export, and download-all/download-favorites as a zip.
+> **Not a developer?** Start with **[GETTING_STARTED.md](GETTING_STARTED.md)** — a plain-English, ten-minute setup with no jargon.
+> **Putting it on the internet?** See **[DEPLOYMENT.md](DEPLOYMENT.md)** — Cloudflare Tunnel, Tailscale, or a VPS, with a pre-flight security checklist.
 
-**Out of scope, on purpose:** no e-commerce/print store, no invoicing, no multi-user/team accounts (there's exactly one admin — you), no proofing comments or watermarking, and no Lightroom plugin or catalog file writing. The Lightroom "integration" is a clipboard button, nothing more — see [Using the Lightroom export](#using-the-lightroom-export) below.
+## Contents
 
-> **Not a developer?** Follow [GETTING_STARTED.md](GETTING_STARTED.md) — a plain-English, ten-minute setup. To share galleries on the open internet, see [DEPLOYMENT.md](DEPLOYMENT.md) (Cloudflare Tunnel, Tailscale, or a VPS).
+- [Features](#features)
+- [What it deliberately isn't](#what-it-deliberately-isnt)
+- [Quick start](#quick-start)
+- [The Lightroom workflow](#the-lightroom-workflow)
+- [Configuration](#configuration)
+- [Backups](#backups)
+- [Updating](#updating)
+- [Troubleshooting](#troubleshooting)
+- [How it's built](#how-its-built)
+- [License](#license)
+
+## Features
+
+**For you (the photographer):**
+
+- Create a gallery per shoot and **bulk-upload** exported JPEGs by drag-and-drop, with live per-file and overall progress. Thumbnails and previews are generated in the background, so the grid fills in as you watch — no waiting for the whole batch. Interrupted mid-upload? Re-select the same folder; already-uploaded files are detected and skipped.
+- **Manage photos** in place: review any shot full-size in a lightbox, delete in bulk, retry failed processing, set a **cover photo**, and re-sort the whole gallery by **capture time** (fixes interleaved multi-camera shoots) or filename.
+- **The Lightroom pick-list export** — the headline feature. One click copies your client's favorites as a filename list you paste into Lightroom's Library Filter. [How it works ↓](#the-lightroom-workflow)
+- **Account management** built in: change your email or password (which signs out every other device), or sign out everywhere.
+- **Automatic backups** of the database daily, plus on-demand snapshots you can download straight from the dashboard.
+
+**For your client (no account, ever):**
+
+- A fast, responsive gallery — **dark by default**, with a light option — built around a justified photo grid and a full-screen lightbox with pinch-to-zoom.
+- **Favorite** photos with a tap; picks persist across visits and devices with no login. A **Favorites filter** lets them review just their selections.
+- Optional **downloads**, off by default and enabled per gallery: full-resolution originals, individually or as a zip.
+
+**For hosting:**
+
+- **Zero-config setup** — no `.env` required; the cookie-signing secret is generated and persisted on first boot.
+- **One command to install *or* update**, with your photos and database never touched on update.
+- Runs as a **single Docker container** as an **unprivileged user**, with **no third-party requests** of any kind (fonts and assets are self-hosted — client galleries phone home to nobody).
+
+## What it deliberately isn't
+
+No e-commerce or print store, no invoicing, no multi-user or team accounts (there's exactly one admin — you), no proofing comments, no watermarking, and no Lightroom plugin or catalog/XMP writing. The Lightroom "integration" is a clipboard button and nothing more. Keeping the scope this tight is the point.
 
 ## Quick start
 
-Requires [Docker](https://docs.docker.com/get-docker/) with Compose v2 (bundled with Docker Desktop and modern Docker Engine installs).
+Requires [Docker](https://docs.docker.com/get-docker/) with Compose v2 (bundled with Docker Desktop and modern Docker Engine).
 
-**One-line install:**
+**One-line install** (also the update command — safe to re-run):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/orangesunshine321/pixset/main/install.sh | bash
 ```
 
-This installs into `./pixset`, builds the image, starts the app, and waits until it's healthy. Re-running the same command later **updates** an existing install in place — your photos and database are never touched. The default port is **7373** (chosen to stay clear of commonly-used dev ports); if it's taken, the installer prompts you for another. You can also set one up front (`curl ... | PIXSET_PORT=4444 bash`), choose the install location with `PIXSET_DIR=...`, or change the port later by editing `PIXSET_PORT` in the install directory's `.env` and running `docker compose up -d`.
+This installs into `./pixset`, pulls the prebuilt image, starts the app, and waits until it's healthy. Re-running it later **updates in place** — your `./data` directory (photos, database, backups) is never touched.
 
 **Or manually:**
 
@@ -29,57 +65,15 @@ git clone https://github.com/orangesunshine321/pixset.git && cd pixset
 docker compose up -d
 ```
 
-Either way: open `http://localhost:7373` (or your reverse-proxied domain) and complete the one-time admin setup form. No `.env` is required — the cookie-signing secret is generated automatically on first boot and persisted in `./data`, and database migrations run automatically on every container start.
+Then open **`http://localhost:7373`** and complete the one-time setup form. It asks for a **setup code**, which the installer prints (also available with `docker compose logs app | grep "SETUP CODE"`) — this stops anyone else from claiming the admin account, which matters if the app is already reachable on a public URL. Database migrations run automatically on every start.
 
-## Configuration
+The default port is **7373** (chosen to avoid commonly-taken dev ports); if it's busy the installer prompts for another. Set one up front with `curl … | PIXSET_PORT=4444 bash`, choose the location with `PIXSET_DIR=…`, or change it later via `PIXSET_PORT` in `.env`.
 
-Every setting is optional. To override a default, copy `.env.example` to `.env` and uncomment what you need:
+To share galleries beyond your own network, **[DEPLOYMENT.md](DEPLOYMENT.md)** walks through Cloudflare Tunnel (free, no port forwarding — a one-command `docker compose --profile tunnel up -d` once you paste a token), Tailscale, and VPS + reverse-proxy setups.
 
-| Variable | Default | Notes |
-|---|---|---|
-| `PIXSET_PORT` | `7373` | Host port the app is reachable on. Change it any time, then apply with `docker compose up -d`. |
-| `SESSION_SECRET` | auto-generated | Signs gallery-access cookies. Generated on first boot and persisted to `./data/db/session-secret`; set it yourself only if you want to manage/rotate the key. Changing it logs every client out of every gallery. |
-| `UPLOAD_CONCURRENCY` | `4` | How many photos process (thumbnail/preview generation) concurrently in the background. Lower it on low-core or low-RAM hardware — concurrent image processing is the app's main memory consumer. |
-| `MAX_UPLOAD_FILE_SIZE_BYTES` | `52428800` (50MB) | Per-file upload size limit. |
+## The Lightroom workflow
 
-There's deliberately no `ADMIN_EMAIL`/`ADMIN_PASSWORD` env var — the admin account is created once, in-app, via the setup form on first boot. That route permanently disables itself the instant an admin account exists.
-
-## Putting a reverse proxy in front
-
-The app itself only ever speaks plain HTTP on one host port (7373 by default, set by `PIXSET_PORT`), bound to `127.0.0.1` in the provided `docker-compose.yml` — it deliberately never handles TLS itself. Pick whichever of these you already run:
-
-**Caddy** (simplest — automatic HTTPS, ~5 lines):
-
-```
-photos.yourdomain.com {
-	reverse_proxy 127.0.0.1:7373
-}
-```
-
-**Cloudflare Tunnel** — no port forwarding needed at all, works well from behind CGNAT/no static IP. Point a tunnel at `http://localhost:7373`.
-
-**Nginx Proxy Manager / plain Nginx** — a standard `proxy_pass http://127.0.0.1:7373;` reverse-proxy host with your certificate of choice works fine; just make sure `X-Forwarded-Proto` is forwarded (the app trusts it via `TRUST_PROXY=true`, already set in `docker-compose.yml`).
-
-A commented-out example `caddy` service is included directly in `docker-compose.yml` if you'd rather not run a separate reverse proxy stack at all.
-
-## Where you host it: home server vs. a small VPS
-
-The default `docker-compose.yml` is written for a home server/NAS, and that works well. One thing worth knowing up front: your home internet's *upload* bandwidth is what both your photo uploads **and** your clients' browsing traffic ride on — most home connections are asymmetric (much faster download than upload), so if a gallery feels sluggish for clients, that's almost always why.
-
-If that turns out to matter to you, the fix needs zero code changes: run the exact same `docker compose up` on a small VPS instead (Hetzner, DigitalOcean, etc. — a few dollars a month is plenty for this workload). Your one-time upload of a shoot to the VPS still rides your home connection, but it happens once in the background — you don't wait on it. Every client view afterward comes from the VPS's typically much better, often-symmetric bandwidth, completely decoupling your clients' experience from your home connection. There's no other migration involved: same image, same compose file, same `./data` layout.
-
-## Using Pixset
-
-1. **Create a gallery.** From the admin dashboard, click "New gallery," give it a title (e.g. the client's name/shoot). You land on the gallery's detail page.
-2. **Upload.** Drag a folder of exported JPEGs onto the upload panel. Files upload with live per-file and overall progress; each photo flips from a processing placeholder to a real thumbnail as background processing (thumbnail/preview generation) finishes — you don't need to wait for the whole batch before the grid starts filling in. If a browser tab closes or Wi-Fi drops mid-batch, just reopen the gallery and re-select the same folder — already-uploaded files are detected and skipped automatically.
-   You can manage photos afterward: click any thumbnail to review it full-size, use **Select** mode to delete photos or pick the gallery's cover image, and retry any photo whose processing failed with one click.
-3. **Set a password (optional) and copy the link.** In the gallery's settings panel, optionally set a password, then copy the shareable link and send it to your client. No account or login is ever required on their end. You can also enable **client downloads** (off by default — full-resolution originals, individually or as a zip), reorder photos by **capture time** (fixes interleaved multi-camera shoots), and **get a new link** at any time if the old one has spread further than intended — the old link stops working immediately.
-4. **Your client browses and favorites.** They open the link (entering the password if you set one), browse the grid, and tap hearts to pick favorites — with pinch-to-zoom in the full-screen viewer and a **Favorites** filter to review just their picks. Their selections are saved automatically and persist if they come back later, on any device, without an account.
-5. **Pull picks into Lightroom.** See below.
-
-### Using the Lightroom export
-
-This is the whole point of the app. On the gallery's detail page, the **Lightroom export** panel shows every currently-favorited photo and a **"Copy Lightroom List"** button. Clicking it copies a comma-separated list of the *original* filenames (extension stripped) to your clipboard, e.g.:
+On a gallery's detail page, the **Lightroom export** panel lists every favorited photo and a **Copy Lightroom List** button. It copies the favorites' original filenames (extension stripped) as a comma-separated list:
 
 ```
 DSC_1001, DSC_1014, DSC_1032, DSC_1058
@@ -87,59 +81,86 @@ DSC_1001, DSC_1014, DSC_1032, DSC_1058
 
 In Lightroom Classic:
 
-1. Open the Library module and the Filter bar (`\` if it's hidden).
-2. Choose **Text** search, set the field to **Filename**, and set the match mode to **Any** (not "Contains" — Any lets a single paste match every filename in the list at once).
-3. Paste. Every picked photo is now selected/filtered — flag, apply a color label, or start editing.
+1. Open the Library module and the Filter bar (`\` toggles it).
+2. Choose **Text** search → field **Filename** → match **Any**. (Not "Contains" — **Any** matches every filename in one paste.)
+3. Paste. Every pick is now selected — flag them, label them, or start editing.
 
-No plugin, no XMP sidecar writing, no catalog scripting — just a clipboard button and Lightroom's own filter bar.
+No plugin, no sidecars, no catalog scripting — just the clipboard and Lightroom's own filter bar.
+
+## Configuration
+
+Everything is optional. To override a default, copy `.env.example` to `.env` and uncomment what you need:
+
+| Variable | Default | Notes |
+|---|---|---|
+| `PIXSET_PORT` | `7373` | Host port the app is reachable on. Change any time, then `docker compose up -d`. |
+| `SESSION_SECRET` | auto-generated | Signs gallery-access cookies. Generated and persisted to `./data/db/session-secret` on first boot; set it yourself only to manage/rotate the key. Changing it logs every client out of every gallery. |
+| `UPLOAD_CONCURRENCY` | `4` | How many photos process concurrently in the background. Lower it on low-core/low-RAM hardware — image processing is the main memory consumer. |
+| `MAX_UPLOAD_FILE_SIZE_BYTES` | `52428800` (50 MB) | Per-file upload size limit. |
+
+There is deliberately no `ADMIN_EMAIL`/`ADMIN_PASSWORD` — the admin account is created once through the setup form, which permanently disables itself the instant an account exists.
 
 ## Backups
 
-**The database backs itself up automatically** — a consistent snapshot (safe to run against the live database, no downtime) is written to `data/db/backups/` once at startup and then once every 24 hours, with the last 14 daily snapshots kept and older ones pruned. Nothing to configure. If it ever stops running for some reason, a warning banner appears in the admin UI. You can also trigger a snapshot on demand and **download the latest backup** straight from the admin dashboard's system panel — the easiest way to keep an off-box copy without touching a terminal.
+**The database backs itself up automatically** — a consistent, no-downtime snapshot is written to `data/db/backups/` at startup and every 24 hours, keeping the last 14 daily copies. If it ever stalls, a banner appears in the admin UI. You can also trigger a snapshot and **download it** from the dashboard's system panel — the easiest way to keep an off-box copy.
 
-**Photo files are not included in that automatic snapshot** (they're large, and re-processing thumbnails from a re-uploaded original is always possible — but favorites and gallery metadata have no other copy anywhere, which is why *that* part is automatic and mandatory). For full disaster recovery — protecting against a dead drive, not just a bad deploy — back up the entire `./data` directory yourself, on a schedule, to somewhere else. [restic](https://restic.net/) is a good fit: a single static binary, encrypted, deduplicated, incremental, and backend-agnostic (a second drive, another machine over SFTP, or cloud storage all work the same way).
-
-Example (adjust the repository target to whatever you have — a second local disk, a NAS over SFTP, or a cloud bucket all work):
+**Photo files are not in that snapshot** (they're large, and derivatives regenerate from originals) — but favorites and gallery metadata have no other copy anywhere, which is why the database backup is automatic. For full disaster recovery, back up the whole `./data` directory yourself. [restic](https://restic.net/) is a good fit:
 
 ```bash
 export RESTIC_REPOSITORY=/mnt/backup-drive/pixset-restic
 export RESTIC_PASSWORD=<a-strong-password-you-store-somewhere-safe>
-restic init                               # once, ever
-restic backup /path/to/pixset/data        # run this on a schedule (e.g. a nightly host cron job)
+restic init                          # once, ever
+restic backup /path/to/pixset/data   # on a schedule, e.g. nightly cron
 restic forget --keep-daily 14 --keep-weekly 8 --prune
 ```
 
-**Restore:** stop the container, replace `./data` with your backed-up copy (or just `data/db/` plus `data/photos/originals/` if you only need the essentials — derivatives regenerate on next boot for anything missing), start the container again. No service-specific restore tooling to relearn.
+**Restore:** stop the container, replace `./data` with your backup (or just `data/db/` plus `data/photos/originals/` — derivatives regenerate on boot), start again.
 
 ## Updating
 
+Re-run the [one-line installer](#quick-start) — it pulls the latest image and leaves your data alone. From a manual clone instead:
+
 ```bash
-git pull
-docker compose build
-docker compose up -d
+git pull && docker compose pull && docker compose up -d
 ```
 
-Database migrations run automatically on every container start — there's no separate migration step.
-
-If you host this repo on GitHub, CI runs the test suite on every push, and pushing a version tag (`git tag v1.2.0 && git push --tags`) publishes a prebuilt multi-arch image to GitHub Container Registry — after which any machine can skip local builds entirely by using `image: ghcr.io/<you>/pixset:latest` in place of `build: .` in the compose file.
+Migrations run automatically on start. Tagged releases publish a prebuilt multi-arch image to GitHub Container Registry (`ghcr.io/orangesunshine321/pixset`), which is what the installer and `docker compose pull` fetch — no local build needed.
 
 ## Troubleshooting
 
-**Forgot the admin password.** You can change your password and email any time from the account menu (top right) while signed in. If you're locked out entirely: there's no email-based reset flow (out of scope by design — this is a single-admin tool), and recovery is one SQL statement:
+**Forgot the admin password.** While signed in, change it any time from the account menu. If you're fully locked out, there's no email reset (single-admin tool by design) — reset the account with:
 
 ```bash
 docker compose exec app sh -c 'sqlite3 /data/db/app.sqlite "DELETE FROM admin_sessions; DELETE FROM admin_users;"'
 ```
 
-(Both tables: the sqlite3 CLI doesn't enforce foreign keys by default, so deleting only
-the account would leave old logged-in browser sessions orphaned.)
+Reload the app and the setup form reappears. Galleries, photos, and favorites are untouched — only the login is reset. (Both tables are cleared because the sqlite3 CLI doesn't enforce foreign keys, so old sessions would otherwise be orphaned.)
 
-Reload the app — the one-time setup form reappears, ready to create a fresh admin account. (Existing galleries, photos, and favorites are untouched; only the admin login itself is reset.)
+**Port already in use.** Set `PIXSET_PORT` in `.env` (e.g. `PIXSET_PORT=4444`) and run `docker compose up -d`. The installer handles this automatically on fresh installs.
 
-**Permission errors on `./data`.** The container currently runs as root for the simplest possible bind-mount story on a home NAS. If you'd rather run it as a non-root user, add a `user: "1000:1000"` (matching your host UID/GID) to the `app` service in `docker-compose.yml` and `chown -R 1000:1000 ./data` once beforehand.
+**Permission errors on `./data`.** The container fixes ownership of its data volume automatically on start. If you need it to run under a specific host UID, add `user: "1000:1000"` to the `app` service and `chown -R 1000:1000 ./data` once beforehand.
 
-**Port already in use.** Set `PIXSET_PORT` in `.env` next to `docker-compose.yml` (e.g. `PIXSET_PORT=4444`), run `docker compose up -d`, and point your reverse proxy at the new port. The installer handles this automatically on fresh installs.
+## How it's built
 
-## Stack
+- **Backend:** Fastify + SQLite (via Drizzle ORM) + sharp for image processing, run directly from TypeScript by `tsx` — there's no server compile step.
+- **Frontend:** a React + Vite single-page app (no SSR — private galleries have no SEO value). Self-hosted variable fonts, no external assets.
+- **One process, one container:** background image processing, backups, and cleanup all run as loops inside the same Node process that serves HTTP. No Postgres, no Redis, no separate worker, no required cloud dependency.
+- **Two auth systems by design:** DB-backed sessions for the single admin; stateless signed cookies for gallery access, so a password change instantly invalidates every previously issued link.
 
-Fastify + SQLite (via Drizzle) + sharp on the backend; React + Vite (no SSR — private galleries have no SEO value) on the frontend. Everything runs as a single Docker service — no Postgres, no Redis, no separate worker container, no required cloud dependency. See the architecture notes in the repo history if you want the full rationale behind each choice.
+For the full architecture and rationale, see **[CLAUDE.md](CLAUDE.md)**.
+
+### Development
+
+```bash
+npm install
+npm run dev         # Vite (web, :5173) + Fastify (API, :3000) together, hot-reloading
+npm test            # vitest — integration + unit tests
+npm run typecheck   # tsc --noEmit across server and web
+npm run build       # production frontend bundle → dist/web
+```
+
+The server runs from source via `tsx` in both development and production; only the frontend is bundled. After changing `src/server/db/schema.ts`, run `npm run db:generate` then `npm run db:migrate`.
+
+## License
+
+ISC — see [LICENSE](LICENSE).
