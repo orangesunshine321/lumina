@@ -8,6 +8,13 @@ export const adminUsers = sqliteTable("admin_users", {
   id: text("id").primaryKey(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
+  // TOTP 2FA. The secret is stored while enrolling; totpEnabledAt is set only
+  // once a first code is verified — its presence means 2FA is active on login.
+  totpSecret: text("totp_secret"),
+  totpEnabledAt: integer("totp_enabled_at", { mode: "timestamp_ms" }),
+  // JSON array of { hash, usedAt } — single-use recovery codes (sha256-hashed,
+  // safe because they're high-entropy random, not user-chosen).
+  totpBackupCodes: text("totp_backup_codes"),
   createdAt: timestamp("created_at"),
   updatedAt: timestamp("updated_at"),
 });

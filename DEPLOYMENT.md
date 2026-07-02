@@ -99,6 +99,10 @@ run down this list once:
 - [ ] **Use a strong admin password** (12+ characters is enforced; make it a
       real passphrase). Change it any time from the account menu; that signs
       out every other device.
+- [ ] **Turn on two-factor authentication** (Account settings → Two-factor)
+      if the app is reachable from the internet. It adds a code from any
+      authenticator app to your login, plus one-time backup codes — the
+      biggest single reduction in account-takeover risk on a public URL.
 - [ ] **Keep the app reachable only through your proxy/tunnel.** The default
       compose file binds to `127.0.0.1`, so nothing is exposed directly even
       if the host firewall is open. Don't remove that prefix unless a

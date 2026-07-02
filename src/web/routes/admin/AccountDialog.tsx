@@ -1,6 +1,12 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../../lib/api.ts";
+
+interface Me {
+  email: string;
+  twoFactorEnabled: boolean;
+  backupCodesRemaining: number;
+}
 
 export function AccountDialog({ email, onClose }: { email: string; onClose: () => void }) {
   const queryClient = useQueryClient();
@@ -43,11 +49,213 @@ export function AccountDialog({ email, onClose }: { email: string; onClose: () =
 
         <ChangePasswordForm />
         <div className="my-6 border-t border-line" />
+        <TwoFactorSection
+          onChanged={() => queryClient.invalidateQueries({ queryKey: ["admin-me"] })}
+        />
+        <div className="my-6 border-t border-line" />
         <ChangeEmailForm
           onChanged={() => queryClient.invalidateQueries({ queryKey: ["admin-me"] })}
         />
       </div>
     </div>
+  );
+}
+
+function TwoFactorSection({ onChanged }: { onChanged: () => void }) {
+  const me = useQuery({ queryKey: ["admin-me"], queryFn: () => api.get<Me>("/api/admin/me") });
+  const enabled = me.data?.twoFactorEnabled ?? false;
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h3 className="text-sm font-medium text-text-1">Two-factor authentication</h3>
+          <p className="mt-0.5 text-xs text-text-3">
+            {enabled
+              ? `On — ${me.data?.backupCodesRemaining ?? 0} backup codes left.`
+              : "Add a code from an authenticator app to your login. Strongly recommended if this is on the internet."}
+          </p>
+        </div>
+        <span
+          className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+            enabled ? "bg-text-1 text-invert" : "bg-surface-3 text-text-2"
+          }`}
+        >
+          {enabled ? "On" : "Off"}
+        </span>
+      </div>
+      {enabled ? <Disable2fa onChanged={onChanged} /> : <Enable2fa onChanged={onChanged} />}
+    </div>
+  );
+}
+
+function Enable2fa({ onChanged }: { onChanged: () => void }) {
+  const [enrollment, setEnrollment] = useState<{ qrDataUrl: string; secret: string } | null>(null);
+  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function startSetup() {
+    setError(null);
+    setBusy(true);
+    try {
+      const res = await api.post<{ qrDataUrl: string; secret: string }>("/api/admin/account/2fa/setup");
+      setEnrollment(res);
+    } catch {
+      setError("Couldn't start setup. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirm(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setBusy(true);
+    try {
+      const res = await api.post<{ backupCodes: string[] }>("/api/admin/account/2fa/enable", {
+        password,
+        code: code.trim(),
+      });
+      // Show the backup codes and hold here — calling onChanged() now would
+      // refetch status, flip the section to "enabled", and unmount this view
+      // before the operator ever sees the codes. Refresh only on acknowledge.
+      setBackupCodes(res.backupCodes);
+    } catch (err) {
+      if (err instanceof ApiError && err.message === "wrong_password") setError("Password is incorrect.");
+      else if (err instanceof ApiError && err.message === "invalid_code") setError("That code isn't right — check your app's clock and try the current code.");
+      else setError("Couldn't enable two-factor. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (backupCodes) {
+    return (
+      <div className="flex flex-col gap-3 rounded-lg border border-line bg-canvas p-4">
+        <p className="text-sm font-medium text-text-1">Save your backup codes</p>
+        <p className="text-xs text-text-3">
+          Each works once if you lose your authenticator. Store them somewhere safe — they won't be
+          shown again.
+        </p>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-sm text-text-1">
+          {backupCodes.map((c) => (
+            <span key={c}>{c}</span>
+          ))}
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigator.clipboard.writeText(backupCodes.join("\n"))}
+            className="text-xs font-medium text-text-2 underline decoration-line-strong underline-offset-2 hover:text-text-1"
+          >
+            Copy all
+          </button>
+          <button
+            onClick={onChanged}
+            className="ml-auto rounded-lg bg-text-1 px-4 py-2 text-sm font-medium text-invert transition-opacity hover:opacity-90"
+          >
+            I've saved them
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!enrollment) {
+    return (
+      <button
+        onClick={() => void startSetup()}
+        disabled={busy}
+        className="self-start rounded-lg bg-text-1 px-4 py-2 text-sm font-medium text-invert transition-opacity hover:opacity-90 disabled:opacity-50"
+      >
+        {busy ? "Starting…" : "Enable two-factor"}
+      </button>
+    );
+  }
+
+  return (
+    <form onSubmit={confirm} className="flex flex-col gap-3 rounded-lg border border-line bg-canvas p-4">
+      <p className="text-xs text-text-3">
+        Scan this with an authenticator app (or enter the key manually), then enter the 6-digit code.
+      </p>
+      <img
+        src={enrollment.qrDataUrl}
+        alt="Two-factor QR code"
+        width={180}
+        height={180}
+        className="self-center rounded-lg bg-white p-2"
+      />
+      <p className="break-all text-center font-mono text-xs text-text-3">{enrollment.secret}</p>
+      <DialogField id="tfa-password" label="Password" type="password" value={password} onChange={setPassword} autoComplete="current-password" />
+      <DialogField id="tfa-code" label="6-digit code" type="text" value={code} onChange={setCode} />
+      {error && <p className="text-sm text-accent-500">{error}</p>}
+      <button
+        type="submit"
+        disabled={busy || !password || code.trim().length < 6}
+        className="self-start rounded-lg bg-text-1 px-4 py-2 text-sm font-medium text-invert transition-opacity hover:opacity-90 disabled:opacity-50"
+      >
+        {busy ? "Verifying…" : "Confirm & turn on"}
+      </button>
+    </form>
+  );
+}
+
+function Disable2fa({ onChanged }: { onChanged: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setBusy(true);
+    try {
+      await api.post("/api/admin/account/2fa/disable", { password, code: code.trim() });
+      onChanged();
+      setOpen(false);
+    } catch (err) {
+      if (err instanceof ApiError && err.message === "wrong_password") setError("Password is incorrect.");
+      else if (err instanceof ApiError && err.message === "invalid_code") setError("That code isn't right.");
+      else setError("Couldn't disable two-factor. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="self-start rounded-lg border border-line px-4 py-2 text-sm font-medium text-text-1 transition-colors hover:bg-surface-3"
+      >
+        Disable two-factor
+      </button>
+    );
+  }
+
+  return (
+    <form onSubmit={submit} className="flex flex-col gap-3 rounded-lg border border-line bg-canvas p-4">
+      <p className="text-xs text-text-3">Confirm with your password and a current code to turn it off.</p>
+      <DialogField id="tfa-off-password" label="Password" type="password" value={password} onChange={setPassword} autoComplete="current-password" />
+      <DialogField id="tfa-off-code" label="Code (or a backup code)" type="text" value={code} onChange={setCode} />
+      {error && <p className="text-sm text-accent-500">{error}</p>}
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          disabled={busy || !password || !code.trim()}
+          className="rounded-lg bg-accent-500 px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+        >
+          {busy ? "Disabling…" : "Disable"}
+        </button>
+        <button type="button" onClick={() => setOpen(false)} className="rounded-lg px-4 py-2 text-sm font-medium text-text-2 hover:bg-surface-3">
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }
 
