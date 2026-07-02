@@ -1,6 +1,6 @@
 export type Theme = "dark" | "light";
 
-const STORAGE_KEY = "pixset-theme";
+const STORAGE_KEY = "lumina-theme";
 
 /** Dark is the product default; light is a persisted per-browser opt-in.
  * index.html applies the stored value inline before first paint — this

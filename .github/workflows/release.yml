@@ -1,6 +1,6 @@
 # Publishes a prebuilt image to GitHub Container Registry on every version tag
-# (git tag v1.2.0 && git push --tags), so a fresh machine can run Pixset with
-# `image: ghcr.io/<owner>/pixset:latest` and no local build at all.
+# (git tag v1.2.0 && git push --tags), so a fresh machine can run Lumina with
+# `image: ghcr.io/<owner>/lumina:latest` and no local build at all.
 name: Release image
 
 on:

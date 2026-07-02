@@ -9,7 +9,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const dataDir = mkdtempSync(join(tmpdir(), "pixset-secret-test-"));
+const dataDir = mkdtempSync(join(tmpdir(), "lumina-secret-test-"));
 process.env.DATA_DIR = dataDir;
 process.env.NODE_ENV = "production";
 delete process.env.SESSION_SECRET;

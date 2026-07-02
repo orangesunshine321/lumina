@@ -1,4 +1,4 @@
-# Pixset
+# Lumina
 
 **Self-hosted client photo proofing with a one-click Lightroom pick-list export — a lean alternative to Pixieset.**
 
@@ -53,21 +53,21 @@ Requires [Docker](https://docs.docker.com/get-docker/) with Compose v2 (bundled 
 **One-line install** (also the update command — safe to re-run):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/orangesunshine321/pixset/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/orangesunshine321/lumina/main/install.sh | bash
 ```
 
-This installs into `./pixset`, pulls the prebuilt image, starts the app, and waits until it's healthy. Re-running it later **updates in place** — your `./data` directory (photos, database, backups) is never touched.
+This installs into `./lumina`, pulls the prebuilt image, starts the app, and waits until it's healthy. Re-running it later **updates in place** — your `./data` directory (photos, database, backups) is never touched.
 
 **Or manually:**
 
 ```bash
-git clone https://github.com/orangesunshine321/pixset.git && cd pixset
+git clone https://github.com/orangesunshine321/lumina.git && cd lumina
 docker compose up -d
 ```
 
 Then open **`http://localhost:7373`** and complete the one-time setup form. It asks for a **setup code**, which the installer prints (also available with `docker compose logs app | grep "SETUP CODE"`) — this stops anyone else from claiming the admin account, which matters if the app is already reachable on a public URL. Database migrations run automatically on every start.
 
-The default port is **7373** (chosen to avoid commonly-taken dev ports); if it's busy the installer prompts for another. Set one up front with `curl … | PIXSET_PORT=4444 bash`, choose the location with `PIXSET_DIR=…`, or change it later via `PIXSET_PORT` in `.env`.
+The default port is **7373** (chosen to avoid commonly-taken dev ports); if it's busy the installer prompts for another. Set one up front with `curl … | LUMINA_PORT=4444 bash`, choose the location with `LUMINA_DIR=…`, or change it later via `LUMINA_PORT` in `.env`.
 
 To share galleries beyond your own network, **[DEPLOYMENT.md](DEPLOYMENT.md)** walks through Cloudflare Tunnel (free, no port forwarding — a one-command `docker compose --profile tunnel up -d` once you paste a token), Tailscale, and VPS + reverse-proxy setups.
 
@@ -93,7 +93,7 @@ Everything is optional. To override a default, copy `.env.example` to `.env` and
 
 | Variable | Default | Notes |
 |---|---|---|
-| `PIXSET_PORT` | `7373` | Host port the app is reachable on. Change any time, then `docker compose up -d`. |
+| `LUMINA_PORT` | `7373` | Host port the app is reachable on. Change any time, then `docker compose up -d`. |
 | `SESSION_SECRET` | auto-generated | Signs gallery-access cookies. Generated and persisted to `./data/db/session-secret` on first boot; set it yourself only to manage/rotate the key. Changing it logs every client out of every gallery. |
 | `UPLOAD_CONCURRENCY` | `4` | How many photos process concurrently in the background. Lower it on low-core/low-RAM hardware — image processing is the main memory consumer. |
 | `MAX_UPLOAD_FILE_SIZE_BYTES` | `52428800` (50 MB) | Per-file upload size limit. |
@@ -107,10 +107,10 @@ There is deliberately no `ADMIN_EMAIL`/`ADMIN_PASSWORD` — the admin account is
 **Photo files are not in that snapshot** (they're large, and derivatives regenerate from originals) — but favorites and gallery metadata have no other copy anywhere, which is why the database backup is automatic. For full disaster recovery, back up the whole `./data` directory yourself. [restic](https://restic.net/) is a good fit:
 
 ```bash
-export RESTIC_REPOSITORY=/mnt/backup-drive/pixset-restic
+export RESTIC_REPOSITORY=/mnt/backup-drive/lumina-restic
 export RESTIC_PASSWORD=<a-strong-password-you-store-somewhere-safe>
 restic init                          # once, ever
-restic backup /path/to/pixset/data   # on a schedule, e.g. nightly cron
+restic backup /path/to/lumina/data   # on a schedule, e.g. nightly cron
 restic forget --keep-daily 14 --keep-weekly 8 --prune
 ```
 
@@ -124,7 +124,7 @@ Re-run the [one-line installer](#quick-start) — it pulls the latest image and 
 git pull && docker compose pull && docker compose up -d
 ```
 
-Migrations run automatically on start. Tagged releases publish a prebuilt multi-arch image to GitHub Container Registry (`ghcr.io/orangesunshine321/pixset`), which is what the installer and `docker compose pull` fetch — no local build needed.
+Migrations run automatically on start. Tagged releases publish a prebuilt multi-arch image to GitHub Container Registry (`ghcr.io/orangesunshine321/lumina`), which is what the installer and `docker compose pull` fetch — no local build needed.
 
 ## Troubleshooting
 
@@ -136,7 +136,7 @@ docker compose exec app sh -c 'sqlite3 /data/db/app.sqlite "DELETE FROM admin_se
 
 Reload the app and the setup form reappears. Galleries, photos, and favorites are untouched — only the login is reset. (Both tables are cleared because the sqlite3 CLI doesn't enforce foreign keys, so old sessions would otherwise be orphaned.)
 
-**Port already in use.** Set `PIXSET_PORT` in `.env` (e.g. `PIXSET_PORT=4444`) and run `docker compose up -d`. The installer handles this automatically on fresh installs.
+**Port already in use.** Set `LUMINA_PORT` in `.env` (e.g. `LUMINA_PORT=4444`) and run `docker compose up -d`. The installer handles this automatically on fresh installs.
 
 **Permission errors on `./data`.** The container fixes ownership of its data volume automatically on start. If you need it to run under a specific host UID, add `user: "1000:1000"` to the `app` service and `chown -R 1000:1000 ./data` once beforehand.
 

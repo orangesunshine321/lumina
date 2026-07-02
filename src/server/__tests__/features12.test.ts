@@ -293,7 +293,7 @@ describe("backup operations and gallery insights", () => {
       cookies: { [ADMIN_COOKIE]: adminCookie },
     });
     expect(download.statusCode).toBe(200);
-    expect(download.headers["content-disposition"]).toContain("pixset-app-");
+    expect(download.headers["content-disposition"]).toContain("lumina-app-");
     expect(download.rawPayload.length).toBeGreaterThan(0);
   });
 

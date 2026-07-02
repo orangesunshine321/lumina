@@ -1,6 +1,6 @@
-# Putting Pixset on the internet
+# Putting Lumina on the internet
 
-Pixset only ever speaks plain HTTP on one local port. To share galleries beyond
+Lumina only ever speaks plain HTTP on one local port. To share galleries beyond
 your own machine, put one of these in front of it. All three give you HTTPS
 without touching certificates yourself.
 
@@ -12,22 +12,22 @@ from the container.
 
 1. In the [Cloudflare Zero Trust dashboard](https://one.dash.cloudflare.com/)
    go to **Networks → Tunnels → Create a tunnel** (Cloudflared type), name it
-   `pixset`, and copy the token it shows you.
-2. In your Pixset folder, add the token to `.env`:
+   `lumina`, and copy the token it shows you.
+2. In your Lumina folder, add the token to `.env`:
    ```
    CLOUDFLARE_TUNNEL_TOKEN=eyJh...
    ```
 3. In the tunnel's **Public Hostname** tab, add your hostname (e.g.
    `photos.yourdomain.com`) with service **HTTP** → `app:3000`.
-   (`app:3000` is Pixset's address *inside* the compose network — use it
+   (`app:3000` is Lumina's address *inside* the compose network — use it
    exactly, not localhost or 7373.)
-4. Start Pixset with the tunnel profile:
+4. Start Lumina with the tunnel profile:
    ```bash
    docker compose --profile tunnel up -d
    ```
 
 Your galleries are now at `https://photos.yourdomain.com`. Cloudflare
-terminates TLS and forwards the real visitor IP, which Pixset's rate limiting
+terminates TLS and forwards the real visitor IP, which Lumina's rate limiting
 uses (`TRUST_PROXY` is already set).
 
 ## Option B — Tailscale (private by default, public if you choose)
@@ -45,7 +45,7 @@ tailscale funnel 7373
 ```
 
 Both print the URL to share. `serve` is the safer default; `funnel` behaves
-like normal public hosting. Adjust the port if you changed `PIXSET_PORT`.
+like normal public hosting. Adjust the port if you changed `LUMINA_PORT`.
 
 ## Option C — a VPS with Caddy
 
@@ -71,9 +71,9 @@ the move is just: install on the VPS, copy your `./data` over, done.
 
 ## Verifying without a domain
 
-To confirm Pixset works end-to-end over a real public URL before committing a
+To confirm Lumina works end-to-end over a real public URL before committing a
 domain, run a Cloudflare **quick tunnel** — no account, token, or domain
-needed. Alongside a running Pixset:
+needed. Alongside a running Lumina:
 
 ```bash
 docker run --rm --network <your-compose-network> cloudflare/cloudflared:latest \
@@ -87,7 +87,7 @@ exact test is part of how each release is validated.)
 
 ## Security checklist before going public
 
-Pixset is designed to sit on the open internet behind any of the above, but
+Lumina is designed to sit on the open internet behind any of the above, but
 run down this list once:
 
 - [ ] **Set a password on any gallery you'd mind strangers seeing.** Links are
@@ -125,7 +125,7 @@ galleries phone home to nobody.
 
 ### First-run on a public URL
 
-If you're exposing Pixset publicly *before* creating your account (e.g. the
+If you're exposing Lumina publicly *before* creating your account (e.g. the
 Cloudflare Tunnel is already live), the setup code is what protects that
 window. Get it any time with:
 

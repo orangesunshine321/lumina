@@ -2,7 +2,7 @@
 set -e
 
 DATA_DIR="${DATA_DIR:-/data}"
-APP_USER=pixset
+APP_USER=lumina
 
 # The app runs unprivileged. When started as root (the default), make sure the
 # data volume is writable by the app user, then drop privileges. The ownership

@@ -1,6 +1,6 @@
-# Pixset for photographers — plain-English setup
+# Lumina for photographers — plain-English setup
 
-You don't need to be technical to run Pixset. It's about ten minutes, and
+You don't need to be technical to run Lumina. It's about ten minutes, and
 after that it's just a website you open in your browser.
 
 ## What you need
@@ -11,22 +11,22 @@ after that it's just a website you open in your browser.
 
 ## Step 1 — Install Docker Desktop (one time)
 
-Docker is the thing that runs Pixset. Download it here and install it like
+Docker is the thing that runs Lumina. Download it here and install it like
 any other app: https://www.docker.com/products/docker-desktop/
 
 Open it once after installing and leave it running (it can start
 automatically with your computer — allow that when it asks).
 
-## Step 2 — Install Pixset (one command)
+## Step 2 — Install Lumina (one command)
 
 Open the **Terminal** app (on a Mac: press Cmd+Space, type "Terminal", press
 Enter). Paste this line and press Enter:
 
 ```
-curl -fsSL https://raw.githubusercontent.com/orangesunshine321/pixset/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/orangesunshine321/lumina/main/install.sh | bash
 ```
 
-Wait for it to say **"Pixset is running."** That's the whole install.
+Wait for it to say **"Lumina is running."** That's the whole install.
 
 ## Step 3 — Create your account
 
@@ -54,11 +54,11 @@ output — can create the account. You'll only need it this once.)
 Out of the box, the address only works on your own computer/network. To send
 links that work anywhere, follow **DEPLOYMENT.md** — the Cloudflare Tunnel
 option is free and doesn't require touching your router. If a technical
-friend set Pixset up for you, ask them to do that part; it's a one-time step.
+friend set Lumina up for you, ask them to do that part; it's a one-time step.
 
 ## Updating, later
 
-Paste the same install command from Step 2 again. It updates Pixset without
+Paste the same install command from Step 2 again. It updates Lumina without
 touching your photos or galleries.
 
 ## If something looks broken
@@ -69,9 +69,9 @@ touching your photos or galleries.
 3. Still stuck? Re-run the install command from Step 2 — it repairs the
    install and never deletes your photos.
 
-## The one rule: back up the `pixset/data` folder
+## The one rule: back up the `lumina/data` folder
 
 Everything — photos, galleries, your clients' picks — lives in one folder
-called `data` inside the `pixset` folder the installer created. Copy it to an
+called `data` inside the `lumina` folder the installer created. Copy it to an
 external drive now and then (or let Time Machine / your backup tool include
 it), and you can never really lose anything.

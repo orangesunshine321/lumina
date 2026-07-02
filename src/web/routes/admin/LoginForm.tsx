@@ -32,7 +32,7 @@ export function LoginForm({ onComplete }: { onComplete: () => void }) {
   }
 
   return (
-    <AuthLayout title="Sign in" subtitle="Welcome back to your Pixset admin.">
+    <AuthLayout title="Sign in" subtitle="Welcome back to your Lumina admin.">
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <Field label="Email" htmlFor="login-email">
           <input

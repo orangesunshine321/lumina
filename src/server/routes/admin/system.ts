@@ -40,7 +40,7 @@ export async function systemRoutes(app: FastifyInstance) {
     const path = join(config.backupsDir, latest);
     const info = await stat(path);
     reply.header("Content-Type", "application/octet-stream");
-    reply.header("Content-Disposition", `attachment; filename="pixset-${latest}"`);
+    reply.header("Content-Disposition", `attachment; filename="lumina-${latest}"`);
     reply.header("Content-Length", info.size);
     return reply.send(createReadStream(path));
   });

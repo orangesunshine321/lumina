@@ -20,7 +20,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: unknown) {
-    console.error(`[pixset] ${this.props.label} crashed:`, error);
+    console.error(`[lumina] ${this.props.label} crashed:`, error);
   }
 
   render() {

@@ -62,7 +62,7 @@ describe("photo byte access control", () => {
   });
 
   it("allows a valid gallery cookie", async () => {
-    const res = await fetchThumb({ [`pixset_gallery_${gallery.id}`]: galleryCookie });
+    const res = await fetchThumb({ [`lumina_gallery_${gallery.id}`]: galleryCookie });
     expect(res.statusCode).toBe(200);
     expect(res.rawPayload.length).toBe(FILE_SIZE);
     expect(res.headers["content-type"]).toBe("image/webp");
@@ -83,7 +83,7 @@ describe("photo byte access control", () => {
     });
     const unlocked = await unlockGallery(app, other.slug, other.id, "other-pass");
 
-    const res = await fetchThumb({ [`pixset_gallery_${other.id}`]: unlocked.cookie! });
+    const res = await fetchThumb({ [`lumina_gallery_${other.id}`]: unlocked.cookie! });
     expect(res.statusCode).toBe(403);
   });
 
@@ -100,7 +100,7 @@ describe("photo byte access control", () => {
 describe("range requests (S10)", () => {
   it("serves a suffix range as the LAST N bytes", async () => {
     const res = await fetchThumb(
-      { [`pixset_gallery_${gallery.id}`]: galleryCookie },
+      { [`lumina_gallery_${gallery.id}`]: galleryCookie },
       { range: "bytes=-100" },
     );
     expect(res.statusCode).toBe(206);
@@ -111,7 +111,7 @@ describe("range requests (S10)", () => {
 
   it("416s an unsatisfiable range", async () => {
     const res = await fetchThumb(
-      { [`pixset_gallery_${gallery.id}`]: galleryCookie },
+      { [`lumina_gallery_${gallery.id}`]: galleryCookie },
       { range: "bytes=999999-" },
     );
     expect(res.statusCode).toBe(416);
@@ -120,7 +120,7 @@ describe("range requests (S10)", () => {
 
   it("serves an ordinary bounded range", async () => {
     const res = await fetchThumb(
-      { [`pixset_gallery_${gallery.id}`]: galleryCookie },
+      { [`lumina_gallery_${gallery.id}`]: galleryCookie },
       { range: "bytes=100-199" },
     );
     expect(res.statusCode).toBe(206);

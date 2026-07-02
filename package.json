@@ -1,6 +1,6 @@
 {
-  "name": "pixset",
-  "version": "1.4.0",
+  "name": "lumina",
+  "version": "1.5.0",
   "description": "Self-hosted client photo galleries with a Lightroom pick-list export",
   "private": true,
   "type": "module",

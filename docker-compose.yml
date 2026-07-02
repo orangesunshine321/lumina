@@ -3,7 +3,7 @@ services:
     # The prebuilt multi-arch image is used when pullable (installer runs
     # `docker compose pull` first); `build: .` remains the fallback so
     # source checkouts and forks work without edits.
-    image: ghcr.io/orangesunshine321/pixset:latest
+    image: ghcr.io/orangesunshine321/lumina:latest
     build: .
     restart: unless-stopped
     # Proper PID-1 signal handling so `docker stop` shuts the server down
@@ -24,10 +24,10 @@ services:
       # Loopback-only: your reverse proxy (Caddy/Nginx/Cloudflare Tunnel) is
       # the sole public entry point and terminates TLS. If your reverse proxy
       # runs in a different container/network, drop the 127.0.0.1 prefix.
-      # Change the host port any time by setting PIXSET_PORT in .env and
+      # Change the host port any time by setting LUMINA_PORT in .env and
       # running `docker compose up -d`. 7373 is the default because common
       # dev ports (3000, 8080, 5000…) are so often already taken.
-      - "127.0.0.1:${PIXSET_PORT:-7373}:3000"
+      - "127.0.0.1:${LUMINA_PORT:-7373}:3000"
     volumes:
       - ./data:/data # THE ONLY persistent state: db, originals, derivatives, upload staging, backups
     environment:
@@ -50,7 +50,7 @@ services:
       start_period: 15s
       retries: 3
 
-  # Optional: publish Pixset to the internet with Cloudflare Tunnel — no port
+  # Optional: publish Lumina to the internet with Cloudflare Tunnel — no port
   # forwarding, no TLS certificates to manage, works identically on a home
   # NAS or a cloud server. Create a tunnel in the Cloudflare Zero Trust
   # dashboard, point its public hostname at http://app:3000, put the token in

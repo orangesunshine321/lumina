@@ -9,7 +9,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-export const dataDir = mkdtempSync(join(tmpdir(), "pixset-test-"));
+export const dataDir = mkdtempSync(join(tmpdir(), "lumina-test-"));
 process.env.DATA_DIR = dataDir;
 // Production mode: avoids the pino-pretty worker-thread transport and matches
 // the deployed configuration. Requires an explicit SESSION_SECRET.
@@ -38,7 +38,7 @@ export async function createApp(): Promise<App> {
 
 export const ADMIN_EMAIL = "admin@test.dev";
 export const ADMIN_PASSWORD = "test-password-123";
-export const ADMIN_COOKIE = "pixset_admin_session";
+export const ADMIN_COOKIE = "lumina_admin_session";
 
 interface InjectResponseLike {
   cookies: Array<{ name: string; value: string }>;
@@ -112,11 +112,11 @@ export async function unlockGallery(app: App, slug: string, galleryId: string, p
     url: `/api/gallery/${slug}/unlock`,
     payload: { password },
   });
-  return { res, cookie: cookieValue(res, `pixset_gallery_${galleryId}`) };
+  return { res, cookie: cookieValue(res, `lumina_gallery_${galleryId}`) };
 }
 
 export function multipartUpload(filename: string, contentType: string, data: Buffer) {
-  const boundary = "----pixsetTestBoundary42";
+  const boundary = "----luminaTestBoundary42";
   const payload = Buffer.concat([
     Buffer.from(
       `--${boundary}\r\n` +

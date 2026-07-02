@@ -8,7 +8,7 @@
 /* ---------------------------------------------------------------------------
    Theme system. Dark is the default; light is opt-in via data-theme="light"
    on <html> (set before paint by the inline script in index.html, persisted
-   in localStorage as "pixset-theme", toggled through src/web/lib/theme.ts).
+   in localStorage as "lumina-theme", toggled through src/web/lib/theme.ts).
 
    Components use ONLY the semantic tokens (canvas/surface/line/text tiers),
    never raw hex — that's what makes both themes first-class.

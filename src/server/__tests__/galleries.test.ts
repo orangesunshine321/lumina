@@ -61,7 +61,7 @@ describe("gallery CRUD + password lifecycle", () => {
     const photosWithCookie = await app.inject({
       method: "GET",
       url: `/api/gallery/${gallery.slug}/photos`,
-      cookies: { [`pixset_gallery_${gallery.id}`]: first.cookie! },
+      cookies: { [`lumina_gallery_${gallery.id}`]: first.cookie! },
     });
     expect(photosWithCookie.statusCode).toBe(200);
 
@@ -70,7 +70,7 @@ describe("gallery CRUD + password lifecycle", () => {
     const staleCookie = await app.inject({
       method: "GET",
       url: `/api/gallery/${gallery.slug}/photos`,
-      cookies: { [`pixset_gallery_${gallery.id}`]: first.cookie! },
+      cookies: { [`lumina_gallery_${gallery.id}`]: first.cookie! },
     });
     expect(staleCookie.statusCode).toBe(401);
 
@@ -121,7 +121,7 @@ describe("unlock anti-enumeration", () => {
     const photos = await app.inject({
       method: "GET",
       url: `/api/gallery/${gallery.slug}/photos`,
-      cookies: { [`pixset_gallery_${gallery.id}`]: correct.cookie! },
+      cookies: { [`lumina_gallery_${gallery.id}`]: correct.cookie! },
     });
     expect(photos.statusCode).toBe(200);
   });

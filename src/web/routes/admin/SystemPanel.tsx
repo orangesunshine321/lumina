@@ -86,7 +86,7 @@ export function SystemPanel() {
         </span>
       )}
 
-      <span className="ml-auto">Pixset v{version}</span>
+      <span className="ml-auto">Lumina v{version}</span>
     </div>
   );
 }

@@ -17,7 +17,7 @@ export function AdminApp() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    document.title = "Pixset — Admin";
+    document.title = "Lumina — Admin";
   }, []);
 
   const setupStatus = useQuery({

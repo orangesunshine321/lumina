@@ -33,7 +33,7 @@ export function AdminShell({
             to="/admin"
             className="font-display text-lg font-medium tracking-tight text-text-1"
           >
-            Pixset
+            Lumina
           </Link>
           <div className="flex items-center gap-1">
             <ThemeToggle />

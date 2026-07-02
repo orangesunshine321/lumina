@@ -38,12 +38,12 @@ export function SetupForm({ onComplete }: { onComplete: () => void }) {
   }
 
   return (
-    <AuthLayout title="Welcome to Pixset" subtitle="Create your admin account to get started.">
+    <AuthLayout title="Welcome to Lumina" subtitle="Create your admin account to get started.">
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <Field
           label="Setup code"
           htmlFor="setup-token"
-          hint="Shown by the installer, or in your server logs as “PIXSET SETUP CODE”."
+          hint="Shown by the installer, or in your server logs as “LUMINA SETUP CODE”."
         >
           <input
             id="setup-token"

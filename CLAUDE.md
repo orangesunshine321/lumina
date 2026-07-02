@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Pixset is a self-hosted, single-admin alternative to Pixieset: a photographer uploads a batch of exported JPEGs to a gallery, shares a link (with an optional password) with a client, the client browses and favorites photos with no account required, and the photographer pulls the favorited filenames back into Lightroom Classic via a one-click clipboard export (paste into Lightroom's Library Filter, Filename field, "Any" match). See `README.md` for the user-facing product docs (setup, hosting, backups, troubleshooting).
+Lumina is a self-hosted, single-admin alternative to Pixieset: a photographer uploads a batch of exported JPEGs to a gallery, shares a link (with an optional password) with a client, the client browses and favorites photos with no account required, and the photographer pulls the favorited filenames back into Lightroom Classic via a one-click clipboard export (paste into Lightroom's Library Filter, Filename field, "Any" match). See `README.md` for the user-facing product docs (setup, hosting, backups, troubleshooting).
 
 ## Commands
 

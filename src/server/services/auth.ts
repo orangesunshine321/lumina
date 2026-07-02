@@ -33,7 +33,7 @@ export function verifyPassword(hash: string, plain: string): Promise<boolean> {
 // "sign out this device" / "sign out everywhere" semantics.
 // ---------------------------------------------------------------------------
 
-export const ADMIN_SESSION_COOKIE = "pixset_admin_session";
+export const ADMIN_SESSION_COOKIE = "lumina_admin_session";
 const ADMIN_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days, sliding
 
 function sha256Hex(input: string): string {
@@ -106,7 +106,7 @@ export async function cleanupExpiredAdminSessions(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 const GALLERY_ACCESS_TTL_SECONDS = 90 * 24 * 60 * 60; // 90 days
-const CLIENT_TOKEN_COOKIE = "pixset_client";
+const CLIENT_TOKEN_COOKIE = "lumina_client";
 const CLIENT_TOKEN_TTL_MS = 365 * 24 * 60 * 60 * 1000; // 1 year
 
 function secretKey() {
@@ -114,7 +114,7 @@ function secretKey() {
 }
 
 export function galleryAccessCookieName(galleryId: string) {
-  return `pixset_gallery_${galleryId}`;
+  return `lumina_gallery_${galleryId}`;
 }
 
 export async function issueGalleryAccessToken(galleryId: string, passwordVersion: number) {

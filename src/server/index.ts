@@ -38,14 +38,14 @@ function announceSetupTokenIfNeeded(appInstance: Awaited<ReturnType<typeof build
   const [admin] = db.select({ id: schema.adminUsers.id }).from(schema.adminUsers).limit(1).all();
   if (admin) return;
   const token = ensureSetupToken();
-  appInstance.log.info(`PIXSET SETUP CODE: ${token}  (enter this on the setup screen to create your admin account)`);
+  appInstance.log.info(`LUMINA SETUP CODE: ${token}  (enter this on the setup screen to create your admin account)`);
 }
 
 const app = await buildApp();
 
 try {
   await app.listen({ port: config.port, host: config.host });
-  app.log.info(`pixset listening on http://${config.host}:${config.port} (${config.nodeEnv})`);
+  app.log.info(`lumina listening on http://${config.host}:${config.port} (${config.nodeEnv})`);
   announceSetupTokenIfNeeded(app);
   startWorker();
   startMaintenanceSweep(app);
