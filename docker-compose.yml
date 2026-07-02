@@ -1,5 +1,9 @@
 services:
   app:
+    # The prebuilt multi-arch image is used when pullable (installer runs
+    # `docker compose pull` first); `build: .` remains the fallback so
+    # source checkouts and forks work without edits.
+    image: ghcr.io/orangesunshine321/pixset:latest
     build: .
     restart: unless-stopped
     # Proper PID-1 signal handling so `docker stop` shuts the server down
@@ -20,7 +24,10 @@ services:
       # Loopback-only: your reverse proxy (Caddy/Nginx/Cloudflare Tunnel) is
       # the sole public entry point and terminates TLS. If your reverse proxy
       # runs in a different container/network, drop the 127.0.0.1 prefix.
-      - "127.0.0.1:3000:3000"
+      # Change the host port any time by setting PIXSET_PORT in .env and
+      # running `docker compose up -d`. 7373 is the default because common
+      # dev ports (3000, 8080, 5000…) are so often already taken.
+      - "127.0.0.1:${PIXSET_PORT:-7373}:3000"
     volumes:
       - ./data:/data # THE ONLY persistent state: db, originals, derivatives, upload staging, backups
     environment:

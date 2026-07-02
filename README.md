@@ -18,7 +18,7 @@ Requires [Docker](https://docs.docker.com/get-docker/) with Compose v2 (bundled 
 curl -fsSL https://raw.githubusercontent.com/orangesunshine321/pixset/main/install.sh | bash
 ```
 
-This installs into `./pixset`, builds the image, starts the app, and waits until it's healthy. Re-running the same command later **updates** an existing install in place — your photos and database are never touched. Use `PIXSET_DIR=...` to choose the location and `PIXSET_PORT=3005` if port 3000 is taken.
+This installs into `./pixset`, builds the image, starts the app, and waits until it's healthy. Re-running the same command later **updates** an existing install in place — your photos and database are never touched. The default port is **7373** (chosen to stay clear of commonly-used dev ports); if it's taken, the installer prompts you for another. You can also set one up front (`curl ... | PIXSET_PORT=4444 bash`), choose the install location with `PIXSET_DIR=...`, or change the port later by editing `PIXSET_PORT` in the install directory's `.env` and running `docker compose up -d`.
 
 **Or manually:**
 
@@ -27,7 +27,7 @@ git clone https://github.com/orangesunshine321/pixset.git && cd pixset
 docker compose up -d
 ```
 
-Either way: open `http://localhost:3000` (or your reverse-proxied domain) and complete the one-time admin setup form. No `.env` is required — the cookie-signing secret is generated automatically on first boot and persisted in `./data`, and database migrations run automatically on every container start.
+Either way: open `http://localhost:7373` (or your reverse-proxied domain) and complete the one-time admin setup form. No `.env` is required — the cookie-signing secret is generated automatically on first boot and persisted in `./data`, and database migrations run automatically on every container start.
 
 ## Configuration
 
@@ -35,6 +35,7 @@ Every setting is optional. To override a default, copy `.env.example` to `.env` 
 
 | Variable | Default | Notes |
 |---|---|---|
+| `PIXSET_PORT` | `7373` | Host port the app is reachable on. Change it any time, then apply with `docker compose up -d`. |
 | `SESSION_SECRET` | auto-generated | Signs gallery-access cookies. Generated on first boot and persisted to `./data/db/session-secret`; set it yourself only if you want to manage/rotate the key. Changing it logs every client out of every gallery. |
 | `UPLOAD_CONCURRENCY` | `4` | How many photos process (thumbnail/preview generation) concurrently in the background. Lower it on low-core or low-RAM hardware — concurrent image processing is the app's main memory consumer. |
 | `MAX_UPLOAD_FILE_SIZE_BYTES` | `52428800` (50MB) | Per-file upload size limit. |
@@ -43,19 +44,19 @@ There's deliberately no `ADMIN_EMAIL`/`ADMIN_PASSWORD` env var — the admin acc
 
 ## Putting a reverse proxy in front
 
-The app itself only ever speaks plain HTTP on port 3000, bound to `127.0.0.1` in the provided `docker-compose.yml` — it deliberately never handles TLS itself. Pick whichever of these you already run:
+The app itself only ever speaks plain HTTP on one host port (7373 by default, set by `PIXSET_PORT`), bound to `127.0.0.1` in the provided `docker-compose.yml` — it deliberately never handles TLS itself. Pick whichever of these you already run:
 
 **Caddy** (simplest — automatic HTTPS, ~5 lines):
 
 ```
 photos.yourdomain.com {
-	reverse_proxy 127.0.0.1:3000
+	reverse_proxy 127.0.0.1:7373
 }
 ```
 
-**Cloudflare Tunnel** — no port forwarding needed at all, works well from behind CGNAT/no static IP. Point a tunnel at `http://localhost:3000`.
+**Cloudflare Tunnel** — no port forwarding needed at all, works well from behind CGNAT/no static IP. Point a tunnel at `http://localhost:7373`.
 
-**Nginx Proxy Manager / plain Nginx** — a standard `proxy_pass http://127.0.0.1:3000;` reverse-proxy host with your certificate of choice works fine; just make sure `X-Forwarded-Proto` is forwarded (the app trusts it via `TRUST_PROXY=true`, already set in `docker-compose.yml`).
+**Nginx Proxy Manager / plain Nginx** — a standard `proxy_pass http://127.0.0.1:7373;` reverse-proxy host with your certificate of choice works fine; just make sure `X-Forwarded-Proto` is forwarded (the app trusts it via `TRUST_PROXY=true`, already set in `docker-compose.yml`).
 
 A commented-out example `caddy` service is included directly in `docker-compose.yml` if you'd rather not run a separate reverse proxy stack at all.
 
@@ -135,7 +136,7 @@ Reload the app — the one-time setup form reappears, ready to create a fresh ad
 
 **Permission errors on `./data`.** The container currently runs as root for the simplest possible bind-mount story on a home NAS. If you'd rather run it as a non-root user, add a `user: "1000:1000"` (matching your host UID/GID) to the `app` service in `docker-compose.yml` and `chown -R 1000:1000 ./data` once beforehand.
 
-**Port 3000 already in use.** Change the host-side port in `docker-compose.yml`'s `ports:` mapping (e.g. `"127.0.0.1:3005:3000"`) and point your reverse proxy at the new port.
+**Port already in use.** Set `PIXSET_PORT` in `.env` next to `docker-compose.yml` (e.g. `PIXSET_PORT=4444`), run `docker compose up -d`, and point your reverse proxy at the new port. The installer handles this automatically on fresh installs.
 
 ## Stack
 
