@@ -13,6 +13,7 @@ import "yet-another-react-lightbox/plugins/counter.css";
 import "yet-another-react-lightbox/plugins/captions.css";
 import { thumbHashToDataURL } from "thumbhash";
 import { api } from "../../lib/api.ts";
+import { lightboxSlide } from "../../lib/slides.ts";
 import type { FavoriteToggleResponse, PhotoDTO, PhotoListResponse } from "../../lib/types.ts";
 
 interface AlbumPhoto extends Photo {
@@ -327,38 +328,44 @@ export function PhotoGrid({
                 }
               },
             }}
-            slides={photos.map((p) => ({
-              src: p.urls.preview,
-              title: p.baseFilename,
-              srcSet: [{ src: p.urls.preview2x, width: (p.width ?? 800) * 2, height: (p.height ?? 600) * 2 }],
-            }))}
-          />
-          <button
-            type="button"
-            aria-label={photos[lightboxIndex]?.favorited ? "Remove favorite" : "Add favorite"}
-            onClick={() => {
-              const id = photos[lightboxIndex]?.id;
-              if (id) toggleFavorite.mutate(id);
+            slides={photos.map((p) => ({ ...lightboxSlide(p), title: p.baseFilename }))}
+            render={{
+              // Rendered INSIDE the lightbox portal — as page-level fixed
+              // siblings these sat underneath the slide layer (an ancestor
+              // stacking context trapped their z-index) and never received a
+              // single click.
+              controls: () => (
+                <>
+                  <button
+                    type="button"
+                    aria-label={photos[lightboxIndex]?.favorited ? "Remove favorite" : "Add favorite"}
+                    onClick={() => {
+                      const id = photos[lightboxIndex]?.id;
+                      if (id) toggleFavorite.mutate(id);
+                    }}
+                    className="tap-target on-dark absolute bottom-8 left-1/2 z-10 flex -translate-x-1/2 items-center justify-center rounded-full bg-black/55 px-5 text-white ring-1 ring-white/15 backdrop-blur transition-transform active:scale-90"
+                  >
+                    <HeartIcon filled={Boolean(photos[lightboxIndex]?.favorited)} />
+                    <span className="ml-2 text-sm font-medium">
+                      {photos[lightboxIndex]?.favorited ? "Favorited" : "Favorite"}
+                    </span>
+                  </button>
+                  {allowDownloads && photos[lightboxIndex] && (
+                    <a
+                      href={`${photos[lightboxIndex]!.urls.original}?download=1`}
+                      download
+                      aria-label="Download this photo"
+                      className="tap-target on-dark absolute bottom-8 right-4 z-10 flex items-center justify-center rounded-full bg-black/55 text-white ring-1 ring-white/15 backdrop-blur transition-transform active:scale-90"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
+                        <path d="M12 3v12m0 0l-4-4m4 4l4-4M4 19h16" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </a>
+                  )}
+                </>
+              ),
             }}
-            className="tap-target on-dark fixed bottom-8 left-1/2 z-[10000] flex -translate-x-1/2 items-center justify-center rounded-full bg-black/55 px-5 text-white ring-1 ring-white/15 backdrop-blur transition-transform active:scale-90"
-          >
-            <HeartIcon filled={Boolean(photos[lightboxIndex]?.favorited)} />
-            <span className="ml-2 text-sm font-medium">
-              {photos[lightboxIndex]?.favorited ? "Favorited" : "Favorite"}
-            </span>
-          </button>
-          {allowDownloads && photos[lightboxIndex] && (
-            <a
-              href={`${photos[lightboxIndex]!.urls.original}?download=1`}
-              download
-              aria-label="Download this photo"
-              className="tap-target on-dark fixed bottom-8 right-4 z-[10000] flex items-center justify-center rounded-full bg-black/55 text-white ring-1 ring-white/15 backdrop-blur transition-transform active:scale-90"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
-                <path d="M12 3v12m0 0l-4-4m4 4l4-4M4 19h16" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </a>
-          )}
+          />
         </>
       )}
     </div>

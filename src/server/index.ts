@@ -5,6 +5,8 @@ import { cleanupExpiredAdminSessions } from "./services/auth.ts";
 import { cleanupOldAuthAttempts } from "./services/rateLimiter.ts";
 import { runDatabaseBackup } from "./services/backup.ts";
 import { cleanupStaleUploadTmp } from "./lib/storage.ts";
+import { ensureSetupToken } from "./services/setupToken.ts";
+import { db, schema } from "./db/client.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -30,11 +32,21 @@ function startBackupSweep(appInstance: Awaited<ReturnType<typeof buildApp>>) {
   setInterval(sweep, DAY_MS).unref();
 }
 
+/** While no admin exists, print the first-run setup code prominently — the
+ * installer greps it out of these logs and shows it to the operator. */
+function announceSetupTokenIfNeeded(appInstance: Awaited<ReturnType<typeof buildApp>>) {
+  const [admin] = db.select({ id: schema.adminUsers.id }).from(schema.adminUsers).limit(1).all();
+  if (admin) return;
+  const token = ensureSetupToken();
+  appInstance.log.info(`PIXSET SETUP CODE: ${token}  (enter this on the setup screen to create your admin account)`);
+}
+
 const app = await buildApp();
 
 try {
   await app.listen({ port: config.port, host: config.host });
   app.log.info(`pixset listening on http://${config.host}:${config.port} (${config.nodeEnv})`);
+  announceSetupTokenIfNeeded(app);
   startWorker();
   startMaintenanceSweep(app);
   startBackupSweep(app);

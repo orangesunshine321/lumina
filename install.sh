@@ -131,10 +131,16 @@ for i in $(seq 1 30); do
     echo
     echo "  Open:         http://localhost:$PORT"
     if [ -z "$UPDATE" ]; then
-      echo "  First step:   create your admin account on the setup screen."
+      # Surface the first-run setup code from the logs so the operator doesn't
+      # have to go find it. It gates account creation — see the security note.
+      SETUP_CODE="$(docker compose logs app 2>/dev/null | grep -o 'PIXSET SETUP CODE: [0-9a-f]*' | tail -1 | awk '{print $NF}')"
+      if [ -n "$SETUP_CODE" ]; then
+        echo "  Setup code:   $SETUP_CODE   (enter this on the setup screen)"
+      fi
+      echo "  First step:   open the address above and create your admin account."
       echo "  Your data:    $INSTALL_DIR/data  (photos, database, backups — back this up)"
       echo "  Change port:  edit PIXSET_PORT in $INSTALL_DIR/.env, then 'docker compose up -d'"
-      echo "  Going live:   put a reverse proxy in front for HTTPS — see the README."
+      echo "  Go live:      share galleries on the internet — see DEPLOYMENT.md"
     fi
     echo
     exit 0

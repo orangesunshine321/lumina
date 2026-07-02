@@ -47,10 +47,29 @@ export async function buildApp() {
 
   // Minimal, zero-dependency security headers — no need for a full helmet
   // plugin for a handful of static values.
+  //
+  // CSP: everything is same-origin and self-hosted (fonts, the theme-init
+  // script, all assets), so 'self' is tight. style 'unsafe-inline' is required
+  // for React's inline style attributes (low XSS value); img allows data:
+  // (ThumbHash placeholders, the favicon) and blob:. No external origins at
+  // all — client galleries make zero third-party requests.
+  const CSP = [
+    "default-src 'self'",
+    "img-src 'self' data: blob:",
+    "style-src 'self' 'unsafe-inline'",
+    "script-src 'self'",
+    "font-src 'self'",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "frame-ancestors 'none'",
+    "form-action 'self'",
+  ].join("; ");
   app.addHook("onSend", async (request, reply, payload) => {
     reply.header("X-Content-Type-Options", "nosniff");
     reply.header("X-Frame-Options", "DENY");
     reply.header("Referrer-Policy", "no-referrer");
+    reply.header("Content-Security-Policy", CSP);
     return payload;
   });
 

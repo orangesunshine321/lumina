@@ -8,6 +8,8 @@ A self-hosted, leaner alternative to Pixieset for one specific workflow: share a
 
 **Out of scope, on purpose:** no e-commerce/print store, no invoicing, no multi-user/team accounts (there's exactly one admin — you), no proofing comments or watermarking, and no Lightroom plugin or catalog file writing. The Lightroom "integration" is a clipboard button, nothing more — see [Using the Lightroom export](#using-the-lightroom-export) below.
 
+> **Not a developer?** Follow [GETTING_STARTED.md](GETTING_STARTED.md) — a plain-English, ten-minute setup. To share galleries on the open internet, see [DEPLOYMENT.md](DEPLOYMENT.md) (Cloudflare Tunnel, Tailscale, or a VPS).
+
 ## Quick start
 
 Requires [Docker](https://docs.docker.com/get-docker/) with Compose v2 (bundled with Docker Desktop and modern Docker Engine installs).

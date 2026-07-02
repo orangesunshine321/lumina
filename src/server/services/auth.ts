@@ -135,7 +135,9 @@ export async function verifyGalleryAccessToken(
 ): Promise<GalleryAccessPayload | null> {
   if (!token) return null;
   try {
-    const { payload } = await jwtVerify(token, secretKey());
+    // Pin the algorithm explicitly — belt-and-suspenders against alg-confusion
+    // (jose already rejects `alg:none` and asymmetric confusion for HS keys).
+    const { payload } = await jwtVerify(token, secretKey(), { algorithms: ["HS256"] });
     if (typeof payload.galleryId !== "string" || typeof payload.passwordVersion !== "number") {
       return null;
     }

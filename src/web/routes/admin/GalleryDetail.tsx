@@ -103,6 +103,7 @@ export function GalleryDetail() {
             photoCount={data.photoCount}
             favoriteCount={data.favoriteCount}
             failedCount={data.statusCounts.failed}
+            coverPhotoId={data.coverPhotoId}
           />
         </ErrorBoundary>
       </Section>

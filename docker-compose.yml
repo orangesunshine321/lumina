@@ -31,6 +31,7 @@ services:
     volumes:
       - ./data:/data # THE ONLY persistent state: db, originals, derivatives, upload staging, backups
     environment:
+      - DATA_DIR=/data
       - DATABASE_PATH=/data/db/app.sqlite
       - BACKUPS_DIR=/data/db/backups
       - PHOTOS_PATH=/data/photos
@@ -48,6 +49,23 @@ services:
       timeout: 5s
       start_period: 15s
       retries: 3
+
+  # Optional: publish Pixset to the internet with Cloudflare Tunnel — no port
+  # forwarding, no TLS certificates to manage, works identically on a home
+  # NAS or a cloud server. Create a tunnel in the Cloudflare Zero Trust
+  # dashboard, point its public hostname at http://app:3000, put the token in
+  # .env as CLOUDFLARE_TUNNEL_TOKEN, then start with:
+  #   docker compose --profile tunnel up -d
+  # Full walkthrough: DEPLOYMENT.md
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      - app
 
   # Optional — only include this if you don't already run a reverse proxy on
   # your NAS/home server. Uncomment, add a Caddyfile alongside this compose

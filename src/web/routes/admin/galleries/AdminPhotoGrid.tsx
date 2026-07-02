@@ -3,6 +3,7 @@ import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from
 import Lightbox from "yet-another-react-lightbox";
 import "yet-another-react-lightbox/styles.css";
 import { api } from "../../../lib/api.ts";
+import { lightboxSlide } from "../../../lib/slides.ts";
 import { photoUrl, type GalleryDTO, type PhotoDTO, type PhotoListResponse } from "../../../lib/types.ts";
 
 interface ProgressEvent {
@@ -31,11 +32,13 @@ export function AdminPhotoGrid({
   photoCount,
   favoriteCount,
   failedCount,
+  coverPhotoId,
 }: {
   galleryId: string;
   photoCount: number;
   favoriteCount: number;
   failedCount: number;
+  coverPhotoId: string | null;
 }) {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<GridFilter>("all");
@@ -340,6 +343,7 @@ export function AdminPhotoGrid({
             <PhotoTile
               key={photo.id}
               photo={photo}
+              isCover={photo.id === coverPhotoId}
               selectionMode={selectionMode}
               isSelected={selected.has(photo.id)}
               onClick={() => handleTileClick(photo)}
@@ -362,15 +366,40 @@ export function AdminPhotoGrid({
           close={() => setLightboxIndex(null)}
           index={lightboxIndex}
           on={{ view: ({ index }) => setLightboxIndex(index) }}
-          slides={readyPhotos.map((p) => ({
-            src: p.urls.preview,
-            srcSet: [
-              { src: p.urls.preview2x, width: (p.width ?? 800) * 2, height: (p.height ?? 600) * 2 },
-            ],
-          }))}
+          slides={readyPhotos.map((p) => lightboxSlide(p))}
+          render={{
+            // Inside the portal — page-level fixed elements stack underneath
+            // the slide layer and never receive clicks.
+            controls: () => {
+              const current = readyPhotos[lightboxIndex];
+              if (!current) return null;
+              const isCover = current.id === coverPhotoId;
+              return (
+                <button
+                  type="button"
+                  disabled={isCover || setCover.isPending}
+                  onClick={() => setCover.mutate(current.id)}
+                  className="tap-target on-dark absolute bottom-8 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/55 px-5 text-sm font-medium text-white ring-1 ring-white/15 backdrop-blur transition-transform active:scale-95 disabled:opacity-60"
+                >
+                  <CoverIcon />
+                  {isCover ? "Current cover" : coverJustSet ? "Cover set!" : "Set as cover"}
+                </button>
+              );
+            },
+          }}
         />
       )}
     </>
+  );
+}
+
+function CoverIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" className="h-4 w-4">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <circle cx="8.5" cy="8.5" r="1.5" />
+      <path d="M21 15l-5-5L5 21" />
+    </svg>
   );
 }
 
@@ -474,6 +503,7 @@ function SortMenu({
 
 function PhotoTile({
   photo,
+  isCover,
   selectionMode,
   isSelected,
   onClick,
@@ -481,6 +511,7 @@ function PhotoTile({
   retryPending,
 }: {
   photo: PhotoDTO;
+  isCover: boolean;
   selectionMode: boolean;
   isSelected: boolean;
   onClick: () => void;
@@ -569,6 +600,12 @@ function PhotoTile({
           <svg viewBox="0 0 24 24" fill="currentColor" className="h-3 w-3">
             <path d="M12 21s-6.716-4.35-9.428-8.06C.29 9.94 1.02 6.2 4.2 5.02c2-.74 4.02.02 5.3 1.66C10.78 5.04 12.8 4.28 14.8 5.02c3.18 1.18 3.91 4.92 1.63 7.92C18.716 16.65 12 21 12 21z" />
           </svg>
+        </span>
+      )}
+
+      {isCover && !selectionMode && (
+        <span className="absolute left-1.5 top-1.5 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium tracking-wide text-white backdrop-blur">
+          Cover
         </span>
       )}
 

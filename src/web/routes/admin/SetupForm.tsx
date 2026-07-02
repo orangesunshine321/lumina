@@ -5,6 +5,7 @@ export function SetupForm({ onComplete }: { onComplete: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [setupToken, setSetupToken] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -23,10 +24,14 @@ export function SetupForm({ onComplete }: { onComplete: () => void }) {
 
     setSubmitting(true);
     try {
-      await api.post("/api/setup", { email, password });
+      await api.post("/api/setup", { email, password, setupToken: setupToken.trim() });
       onComplete();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
+      if (err instanceof ApiError && err.message === "invalid_setup_token") {
+        setError("That setup code isn't right. Find it in the installer output or your server logs.");
+      } else {
+        setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -35,12 +40,28 @@ export function SetupForm({ onComplete }: { onComplete: () => void }) {
   return (
     <AuthLayout title="Welcome to Pixset" subtitle="Create your admin account to get started.">
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <Field
+          label="Setup code"
+          htmlFor="setup-token"
+          hint="Shown by the installer, or in your server logs as “PIXSET SETUP CODE”."
+        >
+          <input
+            id="setup-token"
+            type="text"
+            required
+            autoFocus
+            value={setupToken}
+            onChange={(e) => setSetupToken(e.target.value)}
+            className="auth-input font-mono"
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </Field>
         <Field label="Email" htmlFor="email">
           <input
             id="email"
             type="email"
             required
-            autoFocus
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="auth-input"

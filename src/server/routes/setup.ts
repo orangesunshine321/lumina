@@ -3,6 +3,9 @@ import { eq } from "drizzle-orm";
 import { db, schema } from "../db/client.ts";
 import { generateId } from "../lib/ids.ts";
 import { ADMIN_SESSION_COOKIE, createAdminSession, hashPassword } from "../services/auth.ts";
+import { clearSetupToken, verifySetupToken } from "../services/setupToken.ts";
+import { checkRateLimit, recordAttempt } from "../services/rateLimiter.ts";
+import { getClientIp } from "../lib/http.ts";
 import { config } from "../config.ts";
 
 /**
@@ -17,16 +20,17 @@ export async function setupRoutes(app: FastifyInstance) {
     return { needsSetup };
   });
 
-  app.post<{ Body: { email: string; password: string } }>(
+  app.post<{ Body: { email: string; password: string; setupToken: string } }>(
     "/api/setup",
     {
       schema: {
         body: {
           type: "object",
-          required: ["email", "password"],
+          required: ["email", "password", "setupToken"],
           properties: {
             email: { type: "string", format: "email", maxLength: 255 },
             password: { type: "string", minLength: 12, maxLength: 512 },
+            setupToken: { type: "string", maxLength: 128 },
           },
         },
       },
@@ -34,6 +38,20 @@ export async function setupRoutes(app: FastifyInstance) {
     async (request, reply) => {
       if (await adminExists()) {
         return reply.code(403).send({ error: "setup_already_completed" });
+      }
+
+      // Rate-limit the setup code the same way as a login, so it can't be
+      // brute-forced even in the pre-account window on a public URL.
+      const ip = getClientIp(request);
+      const rateLimit = await checkRateLimit({ scope: "admin_login", ip });
+      if (!rateLimit.allowed) {
+        reply.header("Retry-After", String(rateLimit.retryAfterSeconds));
+        return reply.code(429).send({ error: "too_many_attempts", retryAfterSeconds: rateLimit.retryAfterSeconds });
+      }
+
+      if (!verifySetupToken(request.body.setupToken)) {
+        await recordAttempt({ scope: "admin_login", ip, success: false });
+        return reply.code(403).send({ error: "invalid_setup_token" });
       }
 
       const { email, password } = request.body;
@@ -54,6 +72,9 @@ export async function setupRoutes(app: FastifyInstance) {
       if (result.changes === 0) {
         return reply.code(403).send({ error: "setup_already_completed" });
       }
+
+      clearSetupToken();
+      await recordAttempt({ scope: "admin_login", ip, success: true });
 
       const { rawToken, expiresAt } = await createAdminSession(id, request.headers["user-agent"]);
       reply.setCookie(ADMIN_SESSION_COOKIE, rawToken, {

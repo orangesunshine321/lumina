@@ -49,10 +49,11 @@ export function cookieValue(res: InjectResponseLike, name: string): string | und
 }
 
 export async function setupAdmin(app: App): Promise<{ adminCookie: string }> {
+  const { ensureSetupToken } = await import("../services/setupToken.ts");
   const res = await app.inject({
     method: "POST",
     url: "/api/setup",
-    payload: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD },
+    payload: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD, setupToken: ensureSetupToken() },
   });
   if (res.statusCode !== 200) {
     throw new Error(`test setup failed: ${res.statusCode} ${res.body}`);

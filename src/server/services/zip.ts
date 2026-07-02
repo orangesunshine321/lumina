@@ -7,6 +7,12 @@ import type { GalleryRow } from "../types.ts";
 
 export type DownloadScope = "all" | "favorites";
 
+// Zip building reads every original off disk and streams it out. Cap how many
+// run at once so a client (or a scripted link) can't exhaust CPU/disk/upload
+// bandwidth by firing many "download all" requests in parallel.
+const MAX_CONCURRENT_ZIPS = 3;
+let activeZips = 0;
+
 /** Streams a zip of a gallery's original files. Shared by the admin download
  * route and the (opt-in) client-facing one — one code path, one auth story
  * per caller. Returns false when scope=favorites has nothing to include, so
@@ -46,6 +52,12 @@ export async function streamGalleryZip(
 
   if (photos.length === 0) return false;
 
+  if (activeZips >= MAX_CONCURRENT_ZIPS) {
+    reply.code(503).header("Retry-After", "10").send({ error: "busy" });
+    return true; // handled (rejected) — caller must not also respond
+  }
+  activeZips += 1;
+
   const filename = `${slugify(gallery.title)}-${scope}.zip`;
 
   reply.hijack();
@@ -56,6 +68,13 @@ export async function streamGalleryZip(
 
   // Source files are already-compressed JPEGs — store them verbatim.
   const archive = new ZipArchive({ store: true });
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    activeZips = Math.max(0, activeZips - 1);
+  };
+  reply.raw.on("close", release);
   archive.on("error", (err: Error) => {
     request.log.error({ err, galleryId: gallery.id }, "zip archive error");
     reply.raw.destroy(err);
@@ -71,7 +90,14 @@ export async function streamGalleryZip(
     });
   }
 
-  await archive.finalize();
+  try {
+    await archive.finalize();
+  } finally {
+    // `close` covers client disconnects; this covers normal completion. The
+    // slot is released once either fires (release is idempotent-ish via max).
+    release();
+    reply.raw.off("close", release);
+  }
   return true;
 }
 

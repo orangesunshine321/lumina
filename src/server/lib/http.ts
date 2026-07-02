@@ -3,10 +3,16 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { CLIENT_TOKEN_COOKIE, CLIENT_TOKEN_TTL_MS } from "../services/auth.ts";
 import { config } from "../config.ts";
 
-/** Reads the client's real IP, honoring X-Forwarded-For only because Fastify's
- * `trustProxy` option (config.trustProxy) is enabled solely when the operator
- * has confirmed the app sits behind their own reverse proxy. */
+/** The client's real IP, used to key rate limiting. Prefers `CF-Connecting-IP`
+ * when present: Cloudflare *overwrites* it with the true client address on
+ * every request (a client behind the tunnel can't forge it), which closes the
+ * X-Forwarded-For spoofing gap that would otherwise let an attacker reset the
+ * per-IP backoff by rotating the header. Falls back to Fastify's `request.ip`
+ * (X-Forwarded-For, trusted per `config.trustProxy`) for non-Cloudflare
+ * proxies; the per-gallery and global admin caps backstop that path. */
 export function getClientIp(request: FastifyRequest): string {
+  const cf = request.headers["cf-connecting-ip"];
+  if (typeof cf === "string" && cf.length > 0) return cf;
   return request.ip;
 }
 
