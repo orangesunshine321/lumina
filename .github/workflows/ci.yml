@@ -12,7 +12,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          # Match the production runtime (Dockerfile uses node:26-bookworm-slim).
+          node-version: 26
           cache: npm
       - run: npm ci
       - run: npm run typecheck
