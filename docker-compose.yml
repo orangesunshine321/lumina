@@ -27,8 +27,10 @@ services:
       - DATABASE_PATH=/data/db/app.sqlite
       - BACKUPS_DIR=/data/db/backups
       - PHOTOS_PATH=/data/photos
-      - "SESSION_SECRET=${SESSION_SECRET:?SESSION_SECRET is required, run: openssl rand -hex 32}"
-      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-http://localhost:3000}
+      # Optional — a secure secret is auto-generated on first boot and
+      # persisted under ./data/db/. Set this only if you want to manage the
+      # cookie-signing key yourself (openssl rand -hex 32).
+      - SESSION_SECRET=${SESSION_SECRET:-}
       - TRUST_PROXY=true
       - UPLOAD_CONCURRENCY=${UPLOAD_CONCURRENCY:-4}
       - NODE_ENV=production

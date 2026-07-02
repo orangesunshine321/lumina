@@ -15,6 +15,7 @@ import { uploadRoutes } from "./routes/admin/uploads.ts";
 import { exportRoutes } from "./routes/admin/export.ts";
 import { publicGalleryRoutes } from "./routes/gallery/public.ts";
 import { systemRoutes } from "./routes/admin/system.ts";
+import { photoManageRoutes } from "./routes/admin/photosManage.ts";
 
 const WEB_DIST = resolve(process.cwd(), "dist/web");
 
@@ -58,6 +59,7 @@ export async function buildApp() {
   await app.register(exportRoutes);
   await app.register(publicGalleryRoutes);
   await app.register(systemRoutes);
+  await app.register(photoManageRoutes);
 
   if (config.isProduction && existsSync(WEB_DIST)) {
     await app.register(fastifyStatic, {

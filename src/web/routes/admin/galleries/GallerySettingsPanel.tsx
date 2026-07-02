@@ -17,12 +17,9 @@ export function GallerySettingsPanel(props: {
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
 
-  const [copied, setCopied] = useState(false);
   const [deleteArmed, setDeleteArmed] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-
-  const shareLink = `${window.location.origin}/g/${gallery.slug}`;
 
   async function saveTitle() {
     if (title.trim() === gallery.title) return;
@@ -81,12 +78,6 @@ export function GallerySettingsPanel(props: {
     }
   }
 
-  async function handleCopyLink() {
-    await navigator.clipboard.writeText(shareLink);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }
-
   async function handleDelete() {
     if (!deleteArmed) {
       setDeleteArmed(true);
@@ -118,24 +109,6 @@ export function GallerySettingsPanel(props: {
           {titleSaving && <span className="text-xs text-ink-400">Saving…</span>}
         </div>
         {titleError && <p className="mt-2 text-sm text-accent-500">{titleError}</p>}
-      </section>
-
-      <section className="rounded-2xl border border-ink-100 bg-white p-5">
-        <h3 className="text-sm font-medium text-ink-900">Share link</h3>
-        <div className="mt-3 flex items-center gap-2">
-          <input
-            readOnly
-            value={shareLink}
-            className="w-full max-w-sm rounded-lg border border-ink-200 bg-ink-50 px-3 py-2 text-sm text-ink-600"
-            onFocus={(e) => e.currentTarget.select()}
-          />
-          <button
-            onClick={handleCopyLink}
-            className="shrink-0 rounded-lg border border-ink-200 px-3 py-2 text-sm font-medium text-ink-700 transition-colors hover:bg-ink-100"
-          >
-            {copied ? "Copied!" : "Copy link"}
-          </button>
-        </div>
       </section>
 
       <section className="rounded-2xl border border-ink-100 bg-white p-5">

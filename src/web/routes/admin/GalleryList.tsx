@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../../lib/api.ts";
-import { photoUrl, type GalleryDTO } from "../../lib/types.ts";
+import { photoUrl, type GalleryDTO, type PhotoListResponse } from "../../lib/types.ts";
+import { SystemPanel } from "./SystemPanel.tsx";
 
 export function GalleryList() {
   const [creating, setCreating] = useState(false);
@@ -53,15 +54,38 @@ export function GalleryList() {
         </div>
       )}
 
+      <SystemPanel />
+
       {creating && <CreateGalleryDialog onClose={() => setCreating(false)} />}
     </div>
   );
 }
 
+/** Warm the detail page's caches on hover/focus so clicking a card lands on
+ * fully-rendered content instead of a spinner. Fire-and-forget. */
+function prefetchGalleryDetail(queryClient: QueryClient, galleryId: string) {
+  void queryClient.prefetchQuery({
+    queryKey: ["admin-gallery", galleryId],
+    queryFn: () => api.get<GalleryDTO>(`/api/admin/galleries/${galleryId}`),
+  });
+  void queryClient.prefetchInfiniteQuery({
+    queryKey: ["admin-gallery-photos", galleryId],
+    queryFn: ({ pageParam }) => {
+      const params = new URLSearchParams({ limit: "200" });
+      if (pageParam) params.set("cursor", pageParam as string);
+      return api.get<PhotoListResponse>(`/api/admin/galleries/${galleryId}/photos?${params.toString()}`);
+    },
+    initialPageParam: undefined as string | undefined,
+  });
+}
+
 function GalleryCard({ gallery }: { gallery: GalleryDTO }) {
+  const queryClient = useQueryClient();
   return (
     <Link
       to={`/admin/galleries/${gallery.id}`}
+      onMouseEnter={() => prefetchGalleryDetail(queryClient, gallery.id)}
+      onFocus={() => prefetchGalleryDetail(queryClient, gallery.id)}
       className="group flex flex-col overflow-hidden rounded-2xl border border-ink-100 bg-white shadow-sm transition-shadow hover:shadow-md"
     >
       <div className="relative flex aspect-4/3 items-center justify-center overflow-hidden bg-gradient-to-br from-ink-100 to-ink-50">
@@ -97,9 +121,20 @@ function GalleryCard({ gallery }: { gallery: GalleryDTO }) {
       </div>
       <div className="flex flex-col gap-1 p-4">
         <span className="truncate text-sm font-medium text-ink-900">{gallery.title}</span>
-        <span className="text-xs text-ink-400">
+        <span className="flex items-center gap-1 text-xs text-ink-400">
           {gallery.photoCount} {gallery.photoCount === 1 ? "photo" : "photos"} ·{" "}
           {new Date(gallery.createdAt).toLocaleDateString()}
+          {gallery.favoriteCount > 0 && (
+            <>
+              {" · "}
+              <span className="flex items-center gap-0.5 text-accent-500">
+                {gallery.favoriteCount}
+                <svg viewBox="0 0 24 24" fill="currentColor" className="h-3 w-3" aria-label="favorites">
+                  <path d="M12 21s-6.716-4.35-9.428-8.06C.29 9.94 1.02 6.2 4.2 5.02c2-.74 4.02.02 5.3 1.66C10.78 5.04 12.8 4.28 14.8 5.02c3.18 1.18 3.91 4.92 1.63 7.92C18.716 16.65 12 21 12 21z" />
+                </svg>
+              </span>
+            </>
+          )}
         </span>
       </div>
     </Link>

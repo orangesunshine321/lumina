@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api.ts";
@@ -50,28 +51,35 @@ export function GalleryDetail() {
     navigate("/admin");
   }
 
+  const photosHeading =
+    data.favoriteCount > 0
+      ? `Photos (${data.photoCount} · ${data.favoriteCount} ${data.favoriteCount === 1 ? "favorite" : "favorites"})`
+      : `Photos (${data.photoCount})`;
+
   return (
     <div className="flex flex-col gap-8">
-      <div className="flex items-center gap-3">
-        <Link
-          to="/admin"
-          className="tap-target flex items-center justify-center rounded-lg text-ink-400 transition-colors hover:bg-ink-100 hover:text-ink-900"
-          aria-label="Back to galleries"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
-            <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </Link>
-        <h1 className="truncate text-xl font-semibold tracking-tight text-ink-900">{data.title}</h1>
-      </div>
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-3">
+          <Link
+            to="/admin"
+            className="tap-target flex items-center justify-center rounded-lg text-ink-400 transition-colors hover:bg-ink-100 hover:text-ink-900"
+            aria-label="Back to galleries"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
+              <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </Link>
+          <h1 className="truncate text-xl font-semibold tracking-tight text-ink-900">{data.title}</h1>
+        </div>
 
-      <GallerySettingsPanel gallery={data} onUpdated={handleUpdated} onDeleted={handleDeleted} />
+        <ShareBar slug={data.slug} />
+      </div>
 
       <Section title="Upload photos">
         <UploadPanel galleryId={id} />
       </Section>
 
-      <Section title={`Photos (${data.photoCount})`}>
+      <Section title={photosHeading}>
         <AdminPhotoGrid galleryId={id} />
       </Section>
 
@@ -82,6 +90,49 @@ export function GalleryDetail() {
       <Section title="Download">
         <DownloadButtons galleryId={id} />
       </Section>
+
+      <Section title="Settings">
+        <GallerySettingsPanel gallery={data} onUpdated={handleUpdated} onDeleted={handleDeleted} />
+      </Section>
+    </div>
+  );
+}
+
+/** The share link is the single most-used thing on this page — it lives here,
+ * prominent and one click away, rather than buried in settings. */
+function ShareBar({ slug }: { slug: string }) {
+  const [copied, setCopied] = useState(false);
+  const shareLink = `${window.location.origin}/g/${slug}`;
+
+  async function handleCopy() {
+    await navigator.clipboard.writeText(shareLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-ink-100 bg-white p-3 shadow-sm">
+      <input
+        readOnly
+        value={shareLink}
+        onFocus={(e) => e.currentTarget.select()}
+        aria-label="Gallery share link"
+        className="min-w-0 flex-1 rounded-lg border border-ink-200 bg-ink-50 px-3 py-2 text-sm text-ink-600"
+      />
+      <button
+        onClick={handleCopy}
+        className="shrink-0 rounded-lg bg-ink-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-ink-800"
+      >
+        {copied ? "Copied!" : "Copy link"}
+      </button>
+      <a
+        href={shareLink}
+        target="_blank"
+        rel="noreferrer"
+        className="shrink-0 rounded-lg border border-ink-200 px-3 py-2 text-sm font-medium text-ink-700 transition-colors hover:bg-ink-100"
+      >
+        Open
+      </a>
     </div>
   );
 }

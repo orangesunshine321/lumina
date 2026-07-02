@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { and, asc, eq, gt } from "drizzle-orm";
+import { and, asc, eq, gt, isNotNull, sql } from "drizzle-orm";
 import { db, schema } from "../../db/client.ts";
 import {
   hasGalleryAccess,
@@ -29,12 +29,32 @@ export async function publicGalleryRoutes(app: FastifyInstance) {
     if (!gallery) return reply.code(404).send({ error: "not_found" });
 
     ensureClientToken(request, reply);
+    const hasAccess = await hasGalleryAccess(request, gallery);
+
+    // Counts only past the password gate — a locked gallery reveals nothing
+    // beyond its title and that it exists.
+    let photoCount = 0;
+    let favoriteCount = 0;
+    if (hasAccess) {
+      const [photos] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(schema.photos)
+        .where(and(eq(schema.photos.galleryId, gallery.id), eq(schema.photos.status, "ready")));
+      const [favorites] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(schema.favorites)
+        .where(eq(schema.favorites.galleryId, gallery.id));
+      photoCount = photos?.count ?? 0;
+      favoriteCount = favorites?.count ?? 0;
+    }
 
     return {
       slug: gallery.slug,
       title: gallery.title,
       requiresPassword: Boolean(gallery.passwordHash),
-      hasAccess: await hasGalleryAccess(request, gallery),
+      hasAccess,
+      photoCount,
+      favoriteCount,
     };
   });
 
@@ -95,13 +115,21 @@ export async function publicGalleryRoutes(app: FastifyInstance) {
     },
   );
 
-  app.get<{ Params: { slug: string }; Querystring: { cursor?: string; limit?: string } }>(
+  app.get<{
+    Params: { slug: string };
+    Querystring: { cursor?: string; limit?: string; favorites?: string };
+  }>(
     "/api/gallery/:slug/photos",
     { preHandler: requireGalleryAccess },
     async (request, reply) => {
       const gallery = request.gallery!;
       const limit = Math.min(Number(request.query.limit ?? DEFAULT_PAGE_SIZE) || DEFAULT_PAGE_SIZE, 500);
       const cursor = request.query.cursor ? Number(request.query.cursor) : undefined;
+      const favoritesOnly = request.query.favorites === "1" || request.query.favorites === "true";
+
+      const conditions = [eq(schema.photos.galleryId, gallery.id), eq(schema.photos.status, "ready")];
+      if (cursor !== undefined) conditions.push(gt(schema.photos.sortIndex, cursor));
+      if (favoritesOnly) conditions.push(isNotNull(schema.favorites.id));
 
       const rows = await db
         .select({ photo: schema.photos, favoriteId: schema.favorites.id })
@@ -110,15 +138,7 @@ export async function publicGalleryRoutes(app: FastifyInstance) {
           schema.favorites,
           and(eq(schema.favorites.galleryId, schema.photos.galleryId), eq(schema.favorites.photoId, schema.photos.id)),
         )
-        .where(
-          cursor === undefined
-            ? and(eq(schema.photos.galleryId, gallery.id), eq(schema.photos.status, "ready"))
-            : and(
-                eq(schema.photos.galleryId, gallery.id),
-                eq(schema.photos.status, "ready"),
-                gt(schema.photos.sortIndex, cursor),
-              ),
-        )
+        .where(and(...conditions))
         .orderBy(asc(schema.photos.sortIndex))
         .limit(limit);
 

@@ -31,6 +31,44 @@
   ::selection {
     @apply bg-accent-500/20;
   }
+
+  /* One consistent, visible keyboard-focus treatment app-wide. Elements that
+     sit on dark surfaces (lightbox chrome, image-overlay buttons) opt into a
+     white ring via .on-dark or the lightbox root. */
+  :focus-visible {
+    outline: 2px solid var(--color-ink-900);
+    outline-offset: 2px;
+  }
+
+  .on-dark:focus-visible,
+  .yarl__root :focus-visible {
+    outline-color: #ffffff;
+  }
+}
+
+/* Flatten all motion for users who ask for it — the app's transitions are
+   decorative, never load-bearing. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Client gallery tiles: pointer affordance everywhere; a whisper of zoom on
+   devices that actually hover. Touch devices skip it entirely. */
+.pg-tile {
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .pg-tile:hover .pg-photo {
+    transform: scale(1.03);
+  }
 }
 
 @layer utilities {

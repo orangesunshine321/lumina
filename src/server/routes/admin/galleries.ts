@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db, schema } from "../../db/client.ts";
 import { generateId, generateSlug } from "../../lib/ids.ts";
 import { hashPassword } from "../../services/auth.ts";
@@ -13,11 +13,12 @@ interface GalleryDTO {
   hasPassword: boolean;
   coverPhotoId: string | null;
   photoCount: number;
+  favoriteCount: number;
   createdAt: string;
   updatedAt: string;
 }
 
-function toDTO(row: typeof schema.galleries.$inferSelect): GalleryDTO {
+function toDTO(row: typeof schema.galleries.$inferSelect, favoriteCount: number): GalleryDTO {
   return {
     id: row.id,
     slug: row.slug,
@@ -25,9 +26,18 @@ function toDTO(row: typeof schema.galleries.$inferSelect): GalleryDTO {
     hasPassword: Boolean(row.passwordHash),
     coverPhotoId: row.coverPhotoId,
     photoCount: row.photoCount,
+    favoriteCount,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+async function favoriteCountFor(galleryId: string): Promise<number> {
+  const [row] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(schema.favorites)
+    .where(eq(schema.favorites.galleryId, galleryId));
+  return row?.count ?? 0;
 }
 
 export async function galleryAdminRoutes(app: FastifyInstance) {
@@ -61,22 +71,33 @@ export async function galleryAdminRoutes(app: FastifyInstance) {
         .returning();
 
       reply.code(201);
-      return toDTO(created!);
+      return toDTO(created!, 0);
     },
   );
 
   app.get("/api/admin/galleries", async () => {
-    const rows = await db.select().from(schema.galleries).orderBy(desc(schema.galleries.createdAt));
-    return { galleries: rows.map(toDTO) };
+    const rows = await db
+      .select({
+        gallery: schema.galleries,
+        favoriteCount: sql<number>`count(${schema.favorites.id})`,
+      })
+      .from(schema.galleries)
+      .leftJoin(schema.favorites, eq(schema.favorites.galleryId, schema.galleries.id))
+      .groupBy(schema.galleries.id)
+      .orderBy(desc(schema.galleries.createdAt));
+    return { galleries: rows.map((r) => toDTO(r.gallery, r.favoriteCount)) };
   });
 
   app.get<{ Params: { id: string } }>("/api/admin/galleries/:id", async (request, reply) => {
     const gallery = await findGallery(request.params.id);
     if (!gallery) return reply.code(404).send({ error: "not_found" });
-    return toDTO(gallery);
+    return toDTO(gallery, await favoriteCountFor(gallery.id));
   });
 
-  app.patch<{ Params: { id: string }; Body: { title?: string; password?: string | null } }>(
+  app.patch<{
+    Params: { id: string };
+    Body: { title?: string; password?: string | null; coverPhotoId?: string };
+  }>(
     "/api/admin/galleries/:id",
     {
       schema: {
@@ -85,6 +106,7 @@ export async function galleryAdminRoutes(app: FastifyInstance) {
           properties: {
             title: { type: "string", minLength: 1, maxLength: 200 },
             password: { type: ["string", "null"], maxLength: 512 },
+            coverPhotoId: { type: "string", maxLength: 64 },
           },
         },
       },
@@ -97,6 +119,22 @@ export async function galleryAdminRoutes(app: FastifyInstance) {
 
       if (typeof request.body.title === "string") {
         update.title = request.body.title;
+      }
+
+      if (typeof request.body.coverPhotoId === "string") {
+        const [photo] = await db
+          .select({ id: schema.photos.id })
+          .from(schema.photos)
+          .where(
+            and(
+              eq(schema.photos.id, request.body.coverPhotoId),
+              eq(schema.photos.galleryId, gallery.id),
+              eq(schema.photos.status, "ready"),
+            ),
+          )
+          .limit(1);
+        if (!photo) return reply.code(400).send({ error: "invalid_cover_photo" });
+        update.coverPhotoId = photo.id;
       }
 
       if ("password" in request.body) {
@@ -119,7 +157,7 @@ export async function galleryAdminRoutes(app: FastifyInstance) {
         .where(eq(schema.galleries.id, gallery.id))
         .returning();
 
-      return toDTO(updated!);
+      return toDTO(updated!, await favoriteCountFor(gallery.id));
     },
   );
 

@@ -14,27 +14,20 @@ Requires [Docker](https://docs.docker.com/get-docker/) and Docker Compose (bundl
 
 ```bash
 git clone <this-repo> pixset && cd pixset
-cp .env.example .env
-```
-
-Edit `.env` and set `SESSION_SECRET` (generate one with `openssl rand -hex 32`) and `PUBLIC_BASE_URL` (the URL clients will actually use, e.g. `https://photos.yourdomain.com`).
-
-```bash
 docker compose up -d
 ```
 
-Open `PUBLIC_BASE_URL` (or `http://localhost:3000` if you haven't put a reverse proxy in front yet) and complete the one-time admin setup form. That's it — no separate database, no manual migration step (they run automatically on every container start).
+That's the whole setup. Open `http://localhost:3000` (or your reverse-proxied domain) and complete the one-time admin setup form. No `.env` is required — the cookie-signing secret is generated automatically on first boot and persisted in `./data`, and database migrations run automatically on every container start.
 
 ## Configuration
 
-All configuration is environment variables, set in `.env` (read by `docker-compose.yml`):
+Every setting is optional. To override a default, copy `.env.example` to `.env` and uncomment what you need:
 
-| Variable | Required | Default | Notes |
-|---|---|---|---|
-| `SESSION_SECRET` | Yes | — | `openssl rand -hex 32`. Signs gallery-access cookies. Changing it logs every client out of every gallery — keep it stable across restarts, and never commit it. |
-| `PUBLIC_BASE_URL` | Recommended | `http://localhost:3000` | The URL clients use to reach the app. Used to build absolute gallery links in the admin UI. |
-| `UPLOAD_CONCURRENCY` | No | `4` | How many photos process (thumbnail/preview generation) concurrently in the background. Lower it on low-core or low-RAM hardware — concurrent image processing is the app's main memory consumer. |
-| `MAX_UPLOAD_FILE_SIZE_BYTES` | No | `52428800` (50MB) | Per-file upload size limit. |
+| Variable | Default | Notes |
+|---|---|---|
+| `SESSION_SECRET` | auto-generated | Signs gallery-access cookies. Generated on first boot and persisted to `./data/db/session-secret`; set it yourself only if you want to manage/rotate the key. Changing it logs every client out of every gallery. |
+| `UPLOAD_CONCURRENCY` | `4` | How many photos process (thumbnail/preview generation) concurrently in the background. Lower it on low-core or low-RAM hardware — concurrent image processing is the app's main memory consumer. |
+| `MAX_UPLOAD_FILE_SIZE_BYTES` | `52428800` (50MB) | Per-file upload size limit. |
 
 There's deliberately no `ADMIN_EMAIL`/`ADMIN_PASSWORD` env var — the admin account is created once, in-app, via the setup form on first boot. That route permanently disables itself the instant an admin account exists.
 
@@ -66,8 +59,9 @@ If that turns out to matter to you, the fix needs zero code changes: run the exa
 
 1. **Create a gallery.** From the admin dashboard, click "New gallery," give it a title (e.g. the client's name/shoot). You land on the gallery's detail page.
 2. **Upload.** Drag a folder of exported JPEGs onto the upload panel. Files upload with live per-file and overall progress; each photo flips from a processing placeholder to a real thumbnail as background processing (thumbnail/preview generation) finishes — you don't need to wait for the whole batch before the grid starts filling in. If a browser tab closes or Wi-Fi drops mid-batch, just reopen the gallery and re-select the same folder — already-uploaded files are detected and skipped automatically.
+   You can manage photos afterward: click any thumbnail to review it full-size, use **Select** mode to delete photos or pick the gallery's cover image, and retry any photo whose processing failed with one click.
 3. **Set a password (optional) and copy the link.** In the gallery's settings panel, optionally set a password, then copy the shareable link and send it to your client. No account or login is ever required on their end.
-4. **Your client browses and favorites.** They open the link (entering the password if you set one), browse the grid, and tap hearts to pick favorites. Their picks are saved automatically and persist if they come back later, on any device, without an account.
+4. **Your client browses and favorites.** They open the link (entering the password if you set one), browse the grid, and tap hearts to pick favorites — with pinch-to-zoom in the full-screen viewer and a **Favorites** filter to review just their picks. Their selections are saved automatically and persist if they come back later, on any device, without an account.
 5. **Pull picks into Lightroom.** See below.
 
 ### Using the Lightroom export

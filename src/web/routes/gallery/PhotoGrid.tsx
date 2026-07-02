@@ -2,7 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { RowsPhotoAlbum, type Photo, type RenderImageContext, type RenderExtras } from "react-photo-album";
 import Lightbox from "yet-another-react-lightbox";
+import Zoom from "yet-another-react-lightbox/plugins/zoom";
+import Counter from "yet-another-react-lightbox/plugins/counter";
+import Captions from "yet-another-react-lightbox/plugins/captions";
 import "yet-another-react-lightbox/styles.css";
+import "yet-another-react-lightbox/plugins/counter.css";
+import "yet-another-react-lightbox/plugins/captions.css";
 import { thumbHashToDataURL } from "thumbhash";
 import { api } from "../../lib/api.ts";
 import type { FavoriteToggleResponse, PhotoDTO, PhotoListResponse } from "../../lib/types.ts";
@@ -11,8 +16,11 @@ interface AlbumPhoto extends Photo {
   id: string;
   favorited: boolean;
   thumbhash: string | null;
+  baseFilename: string;
   urls: PhotoDTO["urls"];
 }
+
+const LIGHTBOX_PLUGINS = [Zoom, Counter, Captions];
 
 // Decoding is ~1ms of base64 + PNG-encode work per placeholder, and this runs
 // inside render for every visible photo — memoize so a favorite toggle (which
@@ -33,9 +41,10 @@ function decodeThumbhash(base64: string): string | null {
   return dataUrl;
 }
 
-export function PhotoGrid({ slug }: { slug: string }) {
+export function PhotoGrid({ slug, favoritesOnly }: { slug: string; favoritesOnly: boolean }) {
   const queryClient = useQueryClient();
-  const queryKey = ["gallery-photos", slug];
+  const queryKey = ["gallery-photos", slug, favoritesOnly ? "favorites" : "all"];
+  const inactiveKey = ["gallery-photos", slug, favoritesOnly ? "all" : "favorites"];
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
@@ -43,6 +52,7 @@ export function PhotoGrid({ slug }: { slug: string }) {
     queryKey,
     queryFn: ({ pageParam }) => {
       const params = new URLSearchParams({ limit: "180" });
+      if (favoritesOnly) params.set("favorites", "1");
       if (pageParam) params.set("cursor", pageParam);
       return api.get<PhotoListResponse>(`/api/gallery/${slug}/photos?${params.toString()}`);
     },
@@ -61,6 +71,7 @@ export function PhotoGrid({ slug }: { slug: string }) {
           height: photo.height ?? 600,
           favorited: Boolean(photo.favorited),
           thumbhash: photo.thumbhash,
+          baseFilename: photo.baseFilename,
           urls: photo.urls,
         })),
       ),
@@ -81,6 +92,14 @@ export function PhotoGrid({ slug }: { slug: string }) {
     observer.observe(el);
     return () => observer.disconnect();
   }, [query.hasNextPage, query.isFetchingNextPage, query.fetchNextPage]);
+
+  // In the favorites view, unfavoriting refetches and the photo list shrinks —
+  // never leave the lightbox pointing past the end.
+  useEffect(() => {
+    if (lightboxIndex !== null && lightboxIndex >= photos.length) {
+      setLightboxIndex(photos.length > 0 ? photos.length - 1 : null);
+    }
+  }, [photos.length, lightboxIndex]);
 
   const toggleFavorite = useMutation({
     mutationFn: (photoId: string) =>
@@ -114,6 +133,14 @@ export function PhotoGrid({ slug }: { slug: string }) {
           })),
         };
       });
+      // Header/pill counts live in gallery-meta; the other view's cached list
+      // is stale now too. When we're IN the favorites view, refetch it so an
+      // unfavorited photo actually leaves the grid.
+      queryClient.invalidateQueries({ queryKey: ["gallery-meta", slug] });
+      queryClient.invalidateQueries({ queryKey: inactiveKey });
+      if (favoritesOnly) {
+        queryClient.invalidateQueries({ queryKey });
+      }
     },
   });
 
@@ -123,7 +150,15 @@ export function PhotoGrid({ slug }: { slug: string }) {
   ) => {
     const placeholder = context.photo.thumbhash ? decodeThumbhash(context.photo.thumbhash) : null;
     return (
-      <div style={{ position: "relative", width: props.style?.width, height: props.style?.height }}>
+      <div
+        className="pg-tile"
+        style={{
+          position: "relative",
+          width: props.style?.width,
+          height: props.style?.height,
+          overflow: "hidden",
+        }}
+      >
         {placeholder && (
           <img
             src={placeholder}
@@ -134,10 +169,17 @@ export function PhotoGrid({ slug }: { slug: string }) {
         )}
         <img
           {...props}
+          className="pg-photo"
           onLoad={(e) => {
             e.currentTarget.style.opacity = "1";
           }}
-          style={{ ...props.style, position: "absolute", inset: 0, opacity: 0, transition: "opacity 300ms ease" }}
+          style={{
+            ...props.style,
+            position: "absolute",
+            inset: 0,
+            opacity: 0,
+            transition: "opacity 400ms ease-out, transform 400ms ease",
+          }}
         />
       </div>
     );
@@ -151,7 +193,7 @@ export function PhotoGrid({ slug }: { slug: string }) {
         e.stopPropagation();
         toggleFavorite.mutate(context.photo.id);
       }}
-      className="tap-target absolute right-2 top-2 z-10 flex items-center justify-center rounded-full bg-ink-950/40 text-white backdrop-blur transition-transform active:scale-90"
+      className="tap-target on-dark absolute right-2 top-2 z-10 flex items-center justify-center rounded-full bg-ink-950/40 text-white backdrop-blur transition-transform active:scale-90"
     >
       <HeartIcon filled={context.photo.favorited} />
     </button>
@@ -183,6 +225,17 @@ export function PhotoGrid({ slug }: { slug: string }) {
   }
 
   if (photos.length === 0) {
+    if (favoritesOnly) {
+      return (
+        <div className="flex flex-col items-center justify-center gap-2 py-24 text-center text-ink-400">
+          <svg viewBox="0 0 24 24" className="h-8 w-8 fill-none stroke-ink-200" strokeWidth="1.5" aria-hidden>
+            <path d="M12 21s-6.7-4.35-9.3-8.1C1 10.1 1.7 6.6 4.6 5.1c2.3-1.2 4.9-.4 6.4 1.5l1 1.3 1-1.3c1.5-1.9 4.1-2.7 6.4-1.5 2.9 1.5 3.6 5 1.9 7.8C18.7 16.65 12 21 12 21z" />
+          </svg>
+          <p className="text-base font-medium text-ink-900">No favorites yet</p>
+          <p className="max-w-sm text-sm">Tap the heart on the photos you love and they&apos;ll collect here.</p>
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col items-center justify-center gap-2 py-24 text-center text-ink-400">
         <p className="text-base font-medium text-ink-900">No photos yet</p>
@@ -213,6 +266,20 @@ export function PhotoGrid({ slug }: { slug: string }) {
             open
             close={() => setLightboxIndex(null)}
             index={lightboxIndex}
+            plugins={LIGHTBOX_PLUGINS}
+            zoom={{ maxZoomPixelRatio: 3, doubleClickMaxStops: 2 }}
+            controller={{ closeOnBackdropClick: true }}
+            styles={{
+              captionsTitleContainer: { background: "transparent" },
+              captionsTitle: {
+                fontSize: "13px",
+                fontWeight: 400,
+                color: "rgba(255, 255, 255, 0.75)",
+                textAlign: "center",
+                paddingLeft: "72px",
+                paddingRight: "72px",
+              },
+            }}
             on={{
               view: ({ index }) => {
                 setLightboxIndex(index);
@@ -226,6 +293,7 @@ export function PhotoGrid({ slug }: { slug: string }) {
             }}
             slides={photos.map((p) => ({
               src: p.urls.preview,
+              title: p.baseFilename,
               srcSet: [{ src: p.urls.preview2x, width: (p.width ?? 800) * 2, height: (p.height ?? 600) * 2 }],
             }))}
           />
@@ -236,7 +304,7 @@ export function PhotoGrid({ slug }: { slug: string }) {
               const id = photos[lightboxIndex]?.id;
               if (id) toggleFavorite.mutate(id);
             }}
-            className="tap-target fixed bottom-8 left-1/2 z-[10000] flex -translate-x-1/2 items-center justify-center rounded-full bg-ink-950/60 px-5 text-white backdrop-blur transition-transform active:scale-90"
+            className="tap-target on-dark fixed bottom-8 left-1/2 z-[10000] flex -translate-x-1/2 items-center justify-center rounded-full bg-ink-950/60 px-5 text-white backdrop-blur transition-transform active:scale-90"
           >
             <HeartIcon filled={Boolean(photos[lightboxIndex]?.favorited)} />
             <span className="ml-2 text-sm font-medium">

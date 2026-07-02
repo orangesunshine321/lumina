@@ -8,6 +8,7 @@ export interface GalleryDTO {
   hasPassword: boolean;
   coverPhotoId: string | null;
   photoCount: number;
+  favoriteCount: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -17,6 +18,17 @@ export interface GalleryPublicDTO {
   title: string;
   requiresPassword: boolean;
   hasAccess: boolean;
+  /** Count of ready (client-visible) photos. 0 until access is granted. */
+  photoCount: number;
+  favoriteCount: number;
+}
+
+export interface SystemStatsDTO {
+  version: string;
+  backup: { lastBackupAt: string | null; isStale: boolean };
+  database: { sizeBytes: number };
+  library: { galleries: number; photos: number; originalsBytes: number };
+  queue: { pending: number; processing: number; failed: number };
 }
 
 export type PhotoStatus = "pending" | "processing" | "ready" | "failed";
