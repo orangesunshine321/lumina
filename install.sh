@@ -58,7 +58,9 @@ valid_port "$PORT" || fail "PIXSET_PORT must be a number between 1024 and 65535 
 # On a fresh install, a busy port means a conflict with something else. On an
 # update, the port being busy is expected — it's the running Pixset itself.
 if [ -z "$UPDATE" ] && port_in_use "$PORT"; then
-  if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+  # Probe by actually opening /dev/tty: permission tests pass on macOS even
+  # without a controlling terminal, but the open itself fails there.
+  if { : < /dev/tty; } 2>/dev/null; then
     say "Port $PORT is already in use by another app."
     for attempt in 1 2 3; do
       printf 'Enter a different port for Pixset (1024-65535): ' > /dev/tty
