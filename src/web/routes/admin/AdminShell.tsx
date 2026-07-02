@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api.ts";
+import { getTheme, toggleTheme, type Theme } from "../../lib/theme.ts";
 import { AccountDialog } from "./AccountDialog.tsx";
 
 interface BackupStatus {
@@ -25,22 +26,25 @@ export function AdminShell({
   });
 
   return (
-    <div className="min-h-screen bg-ink-50">
-      <header className="sticky top-0 z-10 border-b border-ink-100 bg-white/80 backdrop-blur">
+    <div className="min-h-screen bg-canvas">
+      <header className="sticky top-0 z-10 border-b border-line bg-canvas/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
           <Link
             to="/admin"
-            className="font-display text-lg font-semibold tracking-tight text-ink-900"
+            className="font-display text-lg font-medium tracking-tight text-text-1"
           >
             Pixset
           </Link>
-          <AccountMenu email={admin.email} onOpenSettings={() => setAccountOpen(true)} />
+          <div className="flex items-center gap-1">
+            <ThemeToggle />
+            <AccountMenu email={admin.email} onOpenSettings={() => setAccountOpen(true)} />
+          </div>
         </div>
       </header>
 
       {backupStatus.data?.isStale && (
-        <div className="border-b border-accent-500/20 bg-accent-500/5">
-          <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-2 text-xs text-accent-500 sm:px-6">
+        <div className="border-b border-accent-500/20 bg-accent-500/10">
+          <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-2 text-xs text-accent-400 sm:px-6">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5 shrink-0">
               <path
                 d="M12 9v4m0 4h.01M10.29 3.86l-8.18 14.18A1.5 1.5 0 0 0 3.34 20h17.32a1.5 1.5 0 0 0 1.23-1.96L13.71 3.86a1.5 1.5 0 0 0-2.42 0Z"
@@ -61,6 +65,39 @@ export function AdminShell({
 
       {accountOpen && <AccountDialog email={admin.email} onClose={() => setAccountOpen(false)} />}
     </div>
+  );
+}
+
+function ThemeToggle() {
+  const [theme, setThemeState] = useState<Theme>(() => getTheme());
+
+  return (
+    <button
+      onClick={() => setThemeState(toggleTheme())}
+      aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+      title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+      className="tap-target flex items-center justify-center rounded-lg text-text-2 transition-colors hover:bg-surface-2 hover:text-text-1"
+    >
+      {theme === "dark" ? (
+        // Sun — offered action: go light.
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" className="h-4.5 w-4.5">
+          <circle cx="12" cy="12" r="4" />
+          <path
+            d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
+            strokeLinecap="round"
+          />
+        </svg>
+      ) : (
+        // Moon — offered action: go dark.
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" className="h-4.5 w-4.5">
+          <path
+            d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
+    </button>
   );
 }
 
@@ -106,7 +143,7 @@ function AccountMenu({ email, onOpenSettings }: { email: string; onOpenSettings:
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="tap-target flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-ink-600 transition-colors hover:bg-ink-100"
+        className="tap-target flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-text-2 transition-colors hover:bg-surface-2 hover:text-text-1"
       >
         <span className="max-w-[160px] truncate">{email}</span>
         <svg
@@ -123,7 +160,7 @@ function AccountMenu({ email, onOpenSettings }: { email: string; onOpenSettings:
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-full z-20 mt-1 w-52 overflow-hidden rounded-xl border border-ink-100 bg-white py-1 shadow-lg"
+          className="absolute right-0 top-full z-20 mt-1 w-52 overflow-hidden rounded-xl border border-line-strong bg-surface-2 py-1 shadow-xl shadow-black/20"
         >
           <MenuItem
             onClick={() => {
@@ -141,7 +178,7 @@ function AccountMenu({ email, onOpenSettings }: { email: string; onOpenSettings:
           >
             Sign out everywhere
           </MenuItem>
-          <div className="my-1 border-t border-ink-100" />
+          <div className="my-1 border-t border-line" />
           <MenuItem onClick={() => void handleSignOut()}>Sign out</MenuItem>
         </div>
       )}
@@ -154,7 +191,7 @@ function MenuItem({ onClick, children }: { onClick: () => void; children: ReactN
     <button
       role="menuitem"
       onClick={onClick}
-      className="block w-full px-4 py-2 text-left text-sm text-ink-700 transition-colors hover:bg-ink-50"
+      className="block w-full px-4 py-2 text-left text-sm text-text-1 transition-colors hover:bg-surface-3"
     >
       {children}
     </button>

@@ -3,6 +3,7 @@ import { useNavigate, useParams, Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api.ts";
 import type { GalleryDTO } from "../../lib/types.ts";
+import { ErrorBoundary } from "../../components/ErrorBoundary.tsx";
 import { GallerySettingsPanel } from "./galleries/GallerySettingsPanel.tsx";
 import { UploadPanel } from "./galleries/UploadPanel.tsx";
 import { AdminPhotoGrid } from "./galleries/AdminPhotoGrid.tsx";
@@ -23,7 +24,7 @@ export function GalleryDetail() {
   if (gallery.isLoading) {
     return (
       <div className="flex justify-center py-24">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-ink-200 border-t-ink-900" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-line-strong border-t-text-1" />
       </div>
     );
   }
@@ -31,8 +32,8 @@ export function GalleryDetail() {
   if (gallery.isError || !gallery.data) {
     return (
       <div className="flex flex-col items-center gap-3 py-24 text-center">
-        <p className="text-sm text-ink-400">Couldn&apos;t load this gallery.</p>
-        <Link to="/admin" className="text-sm font-medium text-ink-900 underline">
+        <p className="text-sm text-text-3">Couldn&apos;t load this gallery.</p>
+        <Link to="/admin" className="text-sm font-medium text-text-1 underline underline-offset-2">
           Back to galleries
         </Link>
       </div>
@@ -52,59 +53,73 @@ export function GalleryDetail() {
   }
 
   const inFlight = data.statusCounts.pending + data.statusCounts.processing;
-  const photosHeading = (
-    <>
-      Photos ({data.photoCount}
-      {data.favoriteCount > 0 && (
-        <> · {data.favoriteCount} {data.favoriteCount === 1 ? "favorite" : "favorites"}</>
-      )}
-      {inFlight > 0 && <> · {inFlight} processing</>}
-      {data.statusCounts.failed > 0 && (
-        <span className="text-accent-500"> · {data.statusCounts.failed} failed</span>
-      )}
-      )
-    </>
-  );
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-10">
       <div className="flex flex-col gap-4">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <Link
             to="/admin"
-            className="tap-target flex items-center justify-center rounded-lg text-ink-400 transition-colors hover:bg-ink-100 hover:text-ink-900"
+            className="tap-target -ml-2 flex items-center justify-center rounded-lg text-text-3 transition-colors hover:bg-surface-2 hover:text-text-1"
             aria-label="Back to galleries"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
               <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </Link>
-          <h1 className="truncate font-display text-2xl font-semibold tracking-tight text-ink-900">
-            {data.title}
-          </h1>
+          <div className="min-w-0">
+            <h1 className="truncate font-display text-2xl font-medium tracking-tight text-text-1">
+              {data.title}
+            </h1>
+            <p className="mt-0.5 text-xs text-text-3">
+              {data.photoCount} {data.photoCount === 1 ? "photo" : "photos"}
+              {data.favoriteCount > 0 && (
+                <>
+                  {" · "}
+                  {data.favoriteCount} {data.favoriteCount === 1 ? "favorite" : "favorites"}
+                </>
+              )}
+              {inFlight > 0 && <> · {inFlight} processing</>}
+              {data.statusCounts.failed > 0 && (
+                <span className="text-accent-500"> · {data.statusCounts.failed} failed</span>
+              )}
+            </p>
+          </div>
         </div>
 
         <ShareBar slug={data.slug} />
       </div>
 
-      <Section title="Upload photos">
-        <UploadPanel galleryId={id} />
+      <Section title="Upload">
+        <ErrorBoundary label="the upload panel">
+          <UploadPanel galleryId={id} />
+        </ErrorBoundary>
       </Section>
 
-      <Section title={photosHeading}>
-        <AdminPhotoGrid galleryId={id} />
+      <Section title="Photos">
+        <ErrorBoundary label="the photo grid">
+          <AdminPhotoGrid
+            galleryId={id}
+            photoCount={data.photoCount}
+            favoriteCount={data.favoriteCount}
+            failedCount={data.statusCounts.failed}
+          />
+        </ErrorBoundary>
       </Section>
 
-      <Section title="Lightroom export">
-        <LightroomExportPanel galleryId={id} />
-      </Section>
-
-      <Section title="Download">
-        <DownloadButtons galleryId={id} />
+      <Section title="Deliver">
+        <ErrorBoundary label="the export panels">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <LightroomExportPanel galleryId={id} />
+            <DownloadButtons galleryId={id} />
+          </div>
+        </ErrorBoundary>
       </Section>
 
       <Section title="Settings">
-        <GallerySettingsPanel gallery={data} onUpdated={handleUpdated} onDeleted={handleDeleted} />
+        <ErrorBoundary label="the gallery settings">
+          <GallerySettingsPanel gallery={data} onUpdated={handleUpdated} onDeleted={handleDeleted} />
+        </ErrorBoundary>
       </Section>
     </div>
   );
@@ -123,17 +138,31 @@ function ShareBar({ slug }: { slug: string }) {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-ink-100 bg-white p-3 shadow-sm">
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface p-2 pl-3">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        className="h-4 w-4 shrink-0 text-text-3"
+        aria-hidden
+      >
+        <path
+          d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
       <input
         readOnly
         value={shareLink}
         onFocus={(e) => e.currentTarget.select()}
         aria-label="Gallery share link"
-        className="min-w-0 flex-1 rounded-lg border border-ink-200 bg-ink-50 px-3 py-2 text-sm text-ink-600"
+        className="min-w-0 flex-1 bg-transparent px-1 py-1.5 text-sm text-text-2 outline-none"
       />
       <button
         onClick={handleCopy}
-        className="shrink-0 rounded-lg bg-ink-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-ink-800"
+        className="shrink-0 rounded-lg bg-text-1 px-3 py-1.5 text-sm font-medium text-invert transition-opacity hover:opacity-90"
       >
         {copied ? "Copied!" : "Copy link"}
       </button>
@@ -141,7 +170,7 @@ function ShareBar({ slug }: { slug: string }) {
         href={shareLink}
         target="_blank"
         rel="noreferrer"
-        className="shrink-0 rounded-lg border border-ink-200 px-3 py-2 text-sm font-medium text-ink-700 transition-colors hover:bg-ink-100"
+        className="shrink-0 rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-text-1 transition-colors hover:bg-surface-2"
       >
         Open
       </a>
@@ -151,8 +180,8 @@ function ShareBar({ slug }: { slug: string }) {
 
 function Section({ title, children }: { title: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section className="flex flex-col gap-4">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-400">{title}</h2>
+    <section className="flex flex-col gap-3">
+      <h2 className="text-xs font-semibold uppercase tracking-widest text-text-3">{title}</h2>
       {children}
     </section>
   );

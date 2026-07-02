@@ -74,14 +74,14 @@ export function AdminApp() {
 function CenteredSpinner() {
   return (
     <div className="flex h-screen w-screen items-center justify-center">
-      <div className="h-6 w-6 animate-spin rounded-full border-2 border-ink-200 border-t-ink-900" />
+      <div className="h-6 w-6 animate-spin rounded-full border-2 border-line-strong border-t-text-1" />
     </div>
   );
 }
 
 function CenteredError({ message }: { message: string }) {
   return (
-    <div className="flex h-screen w-screen items-center justify-center px-6 text-center text-ink-400">
+    <div className="flex h-screen w-screen items-center justify-center px-6 text-center text-text-3">
       {message}
     </div>
   );

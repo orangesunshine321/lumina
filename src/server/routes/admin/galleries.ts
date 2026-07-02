@@ -229,14 +229,20 @@ export async function galleryAdminRoutes(app: FastifyInstance) {
    * upload default; capture-time ordering fixes multi-camera shoots where
    * DSC_/IMG_ sequences interleave wrongly. One-shot operation — pagination
    * cursors and the client grid pick the new order up on their next fetch. */
-  app.post<{ Params: { id: string }; Body: { by: "capturedAt" | "filename" } }>(
+  app.post<{
+    Params: { id: string };
+    Body: { by: "capturedAt" | "filename"; direction?: "asc" | "desc" };
+  }>(
     "/api/admin/galleries/:id/reorder",
     {
       schema: {
         body: {
           type: "object",
           required: ["by"],
-          properties: { by: { type: "string", enum: ["capturedAt", "filename"] } },
+          properties: {
+            by: { type: "string", enum: ["capturedAt", "filename"] },
+            direction: { type: "string", enum: ["asc", "desc"] },
+          },
         },
       },
     },
@@ -254,15 +260,19 @@ export async function galleryAdminRoutes(app: FastifyInstance) {
         .where(eq(schema.photos.galleryId, gallery.id));
 
       const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+      const dir = request.body.direction === "desc" ? -1 : 1;
       const sorted = [...photos].sort((a, b) => {
         if (request.body.by === "capturedAt") {
           const aTime = a.capturedAt?.getTime();
           const bTime = b.capturedAt?.getTime();
-          if (aTime !== undefined && bTime !== undefined && aTime !== bTime) return aTime - bTime;
-          if (aTime !== undefined && bTime === undefined) return -1; // photos without EXIF sort last
+          if (aTime !== undefined && bTime !== undefined && aTime !== bTime) {
+            return (aTime - bTime) * dir;
+          }
+          // Photos without EXIF sort last regardless of direction.
+          if (aTime !== undefined && bTime === undefined) return -1;
           if (aTime === undefined && bTime !== undefined) return 1;
         }
-        return collator.compare(a.baseFilename, b.baseFilename);
+        return collator.compare(a.baseFilename, b.baseFilename) * dir;
       });
 
       const reassign = db.$client.transaction(() => {

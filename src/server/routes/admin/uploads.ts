@@ -199,7 +199,10 @@ export async function uploadRoutes(app: FastifyInstance) {
     },
   );
 
-  app.get<{ Params: { id: string }; Querystring: { cursor?: string; limit?: string } }>(
+  app.get<{
+    Params: { id: string };
+    Querystring: { cursor?: string; limit?: string; filter?: string };
+  }>(
     "/api/admin/galleries/:id/photos",
     { preHandler: requireAdmin },
     async (request) => {
@@ -210,6 +213,15 @@ export async function uploadRoutes(app: FastifyInstance) {
       const conditions = [eq(schema.photos.galleryId, galleryId)];
       if (cursor !== undefined && !Number.isNaN(cursor)) {
         conditions.push(gt(schema.photos.sortIndex, cursor));
+      }
+      // Toolbar filters for the admin grid — server-side so they compose
+      // with cursor pagination on large galleries.
+      if (request.query.filter === "failed") {
+        conditions.push(eq(schema.photos.status, "failed"));
+      } else if (request.query.filter === "favorites") {
+        conditions.push(
+          sql`exists (select 1 from favorites f where f.gallery_id = ${galleryId} and f.photo_id = ${schema.photos.id})`,
+        );
       }
 
       const rows = await db

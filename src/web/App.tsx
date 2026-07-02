@@ -22,15 +22,15 @@ export function App() {
 function FullScreenLoader() {
   return (
     <div className="flex h-screen w-screen items-center justify-center">
-      <div className="h-6 w-6 animate-spin rounded-full border-2 border-ink-200 border-t-ink-900" />
+      <div className="h-6 w-6 animate-spin rounded-full border-2 border-line border-t-text-1" />
     </div>
   );
 }
 
 function NotFound() {
   return (
-    <div className="flex h-screen w-screen flex-col items-center justify-center gap-2 text-ink-400">
-      <p className="text-lg font-medium text-ink-900">Page not found</p>
+    <div className="flex h-screen w-screen flex-col items-center justify-center gap-2 text-text-3">
+      <p className="text-lg font-medium text-text-1">Page not found</p>
       <p className="text-sm">Check the link and try again.</p>
     </div>
   );

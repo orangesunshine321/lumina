@@ -89,10 +89,10 @@ export function AuthLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex h-screen w-screen items-center justify-center bg-ink-50 px-4">
-      <div className="w-full max-w-sm rounded-2xl border border-ink-100 bg-white p-8 shadow-sm">
-        <h1 className="text-xl font-semibold tracking-tight text-ink-900">{title}</h1>
-        <p className="mt-1 text-sm text-ink-400">{subtitle}</p>
+    <div className="flex h-screen w-screen items-center justify-center bg-canvas px-4">
+      <div className="w-full max-w-sm rounded-2xl border border-line bg-surface p-8">
+        <h1 className="font-display text-xl font-medium tracking-tight text-text-1">{title}</h1>
+        <p className="mt-1 text-sm text-text-3">{subtitle}</p>
         <div className="mt-6">{children}</div>
       </div>
     </div>
@@ -112,11 +112,11 @@ export function Field({
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={htmlFor} className="text-sm font-medium text-ink-700">
+      <label htmlFor={htmlFor} className="text-sm font-medium text-text-2">
         {label}
       </label>
       {children}
-      {hint && <span className="text-xs text-ink-400">{hint}</span>}
+      {hint && <span className="text-xs text-text-3">{hint}</span>}
     </div>
   );
 }

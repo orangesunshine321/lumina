@@ -5,10 +5,66 @@
 @import "@fontsource-variable/inter";
 @import "@fontsource-variable/fraunces/opsz.css";
 
+/* ---------------------------------------------------------------------------
+   Theme system. Dark is the default; light is opt-in via data-theme="light"
+   on <html> (set before paint by the inline script in index.html, persisted
+   in localStorage as "pixset-theme", toggled through src/web/lib/theme.ts).
+
+   Components use ONLY the semantic tokens (canvas/surface/line/text tiers),
+   never raw hex — that's what makes both themes first-class.
+--------------------------------------------------------------------------- */
+
+:root {
+  /* Dark (default): neutral near-black, tuned for photography — no blue cast,
+     surfaces step up in lightness, borders stay hairline-subtle. */
+  --t-canvas: #0f0f12;
+  --t-surface: #17171c;
+  --t-surface-2: #1e1e24;
+  --t-surface-3: #26262e;
+  --t-line: #2a2a33;
+  --t-line-strong: #3a3a45;
+  --t-text-1: #f2f2f4;
+  --t-text-2: #a6a6b0;
+  --t-text-3: #71717c;
+  --t-invert: #0f0f12;
+  --t-scrim: rgba(6, 6, 8, 0.55);
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  --t-canvas: #fafafa;
+  --t-surface: #ffffff;
+  --t-surface-2: #f2f2f4;
+  --t-surface-3: #e9e9ec;
+  --t-line: #e6e6ea;
+  --t-line-strong: #d2d2d9;
+  --t-text-1: #141418;
+  --t-text-2: #55555e;
+  --t-text-3: #8b8b94;
+  --t-invert: #ffffff;
+  --t-scrim: rgba(10, 10, 12, 0.45);
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-canvas: var(--t-canvas);
+  --color-surface: var(--t-surface);
+  --color-surface-2: var(--t-surface-2);
+  --color-surface-3: var(--t-surface-3);
+  --color-line: var(--t-line);
+  --color-line-strong: var(--t-line-strong);
+  --color-text-1: var(--t-text-1);
+  --color-text-2: var(--t-text-2);
+  --color-text-3: var(--t-text-3);
+  --color-invert: var(--t-invert);
+}
+
 @theme {
   --font-sans:
     "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-display: "Fraunces Variable", Georgia, "Times New Roman", serif;
+  /* Legacy fixed scale — being phased out in favor of the semantic tokens
+     above; kept so not-yet-migrated components stay functional. */
   --color-ink-950: #0b0b0c;
   --color-ink-900: #131316;
   --color-ink-800: #1c1c21;
@@ -30,7 +86,7 @@
   }
 
   body {
-    @apply bg-ink-50 text-ink-900 antialiased;
+    @apply bg-canvas text-text-1 antialiased;
     font-feature-settings: "cv11", "ss01";
   }
 
@@ -38,11 +94,12 @@
     @apply bg-accent-500/20;
   }
 
-  /* One consistent, visible keyboard-focus treatment app-wide. Elements that
-     sit on dark surfaces (lightbox chrome, image-overlay buttons) opt into a
-     white ring via .on-dark or the lightbox root. */
+  /* One consistent, visible keyboard-focus treatment app-wide — the ring
+     follows the theme's strongest text color. Elements that sit on imagery
+     (lightbox chrome, photo-overlay buttons) opt into a white ring via
+     .on-dark regardless of theme. */
   :focus-visible {
-    outline: 2px solid var(--color-ink-900);
+    outline: 2px solid var(--t-text-1);
     outline-offset: 2px;
   }
 
@@ -121,10 +178,28 @@
 
 @layer components {
   .auth-input {
-    @apply w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-900 outline-none transition-colors focus:border-ink-900 focus:ring-2 focus:ring-ink-900/10;
+    @apply w-full rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm text-text-1 outline-none transition-colors placeholder:text-text-3 focus:border-line-strong focus:ring-2 focus:ring-text-1/10;
   }
 
+  /* Primary buttons are monochrome and theme-inverted: white-on-near-black in
+     dark mode, near-black-on-white in light — quiet, Pixieset-style. */
   .auth-button {
-    @apply mt-2 w-full rounded-lg bg-ink-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-ink-800 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply mt-2 w-full rounded-lg bg-text-1 px-4 py-2.5 text-sm font-medium text-invert transition-opacity hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-50;
   }
+}
+
+/* Lightbox chrome: near-black backdrop, quieter controls and counter — the
+   photo is the only bright thing on screen. */
+.yarl__root {
+  --yarl__color_backdrop: rgba(8, 8, 10, 0.94);
+  --yarl__color_button: rgba(255, 255, 255, 0.72);
+  --yarl__color_button_active: #ffffff;
+}
+
+.yarl__counter {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.55);
+  filter: none;
 }

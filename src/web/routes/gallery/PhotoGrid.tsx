@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { RowsPhotoAlbum, type Photo, type RenderImageContext, type RenderExtras } from "react-photo-album";
+// The album's layout lives in this stylesheet — without it every photo
+// wrapper computes to 0x0 and the grid renders invisibly.
+import "react-photo-album/rows.css";
 import Lightbox from "yet-another-react-lightbox";
 import Zoom from "yet-another-react-lightbox/plugins/zoom";
 import Counter from "yet-another-react-lightbox/plugins/counter";
@@ -168,13 +171,18 @@ export function PhotoGrid({
     // rows are what "fast" feels like on a fresh open.
     const eager = context.index < 8;
     const staggered = staggerIdsRef.current?.has(context.photo.id) ?? false;
+    // react-photo-album's render.image receives NO layout styles — its own
+    // wrapper handles width, so the tile must derive its height from the
+    // photo's aspect ratio. (Reading props.style here collapses every tile
+    // to zero height: the blank-gallery bug.)
+    const aspectPercent = (context.height / context.width) * 100;
     return (
       <div
         className={staggered ? "pg-tile pg-enter" : "pg-tile"}
         style={{
           position: "relative",
-          width: props.style?.width,
-          height: props.style?.height,
+          width: "100%",
+          paddingBottom: `${aspectPercent}%`,
           overflow: "hidden",
           ...(staggered ? { animationDelay: `${Math.min(context.index * 25, 300)}ms` } : {}),
         }}
@@ -192,13 +200,19 @@ export function PhotoGrid({
           className="pg-photo"
           loading={eager ? "eager" : props.loading}
           fetchPriority={eager ? "high" : undefined}
+          ref={(img) => {
+            // Cached images can complete before the load handler ever fires.
+            if (img?.complete) img.style.opacity = "1";
+          }}
           onLoad={(e) => {
             e.currentTarget.style.opacity = "1";
           }}
           style={{
-            ...props.style,
             position: "absolute",
             inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
             opacity: 0,
             transition: "opacity 400ms ease-out, transform 400ms ease",
           }}
@@ -215,7 +229,7 @@ export function PhotoGrid({
         e.stopPropagation();
         toggleFavorite.mutate(context.photo.id);
       }}
-      className="tap-target on-dark absolute right-2 top-2 z-10 flex items-center justify-center rounded-full bg-ink-950/40 text-white backdrop-blur transition-transform active:scale-90"
+      className="tap-target on-dark absolute right-2 top-2 z-10 flex items-center justify-center rounded-full bg-black/45 text-white backdrop-blur transition-transform active:scale-90"
     >
       <HeartIcon filled={context.photo.favorited} />
     </button>
@@ -232,15 +246,15 @@ export function PhotoGrid({
   if (query.isLoading) {
     return (
       <div className="flex justify-center py-24">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-ink-200 border-t-ink-900" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-line border-t-text-1" />
       </div>
     );
   }
 
   if (query.isError) {
     return (
-      <div className="flex flex-col items-center justify-center gap-2 py-24 text-center text-ink-400">
-        <p className="text-base font-medium text-ink-900">Couldn&apos;t load this gallery</p>
+      <div className="flex flex-col items-center justify-center gap-2 py-24 text-center text-text-2">
+        <p className="text-base font-medium text-text-1">Couldn&apos;t load this gallery</p>
         <p className="max-w-sm text-sm">Check your connection and try reloading the page.</p>
       </div>
     );
@@ -249,36 +263,36 @@ export function PhotoGrid({
   if (photos.length === 0) {
     if (favoritesOnly) {
       return (
-        <div className="flex flex-col items-center justify-center gap-2 py-24 text-center text-ink-400">
-          <svg viewBox="0 0 24 24" className="h-8 w-8 fill-none stroke-ink-200" strokeWidth="1.5" aria-hidden>
+        <div className="flex flex-col items-center justify-center gap-2 py-24 text-center text-text-2">
+          <svg viewBox="0 0 24 24" className="h-8 w-8 fill-none stroke-line-strong" strokeWidth="1.5" aria-hidden>
             <path d="M12 21s-6.7-4.35-9.3-8.1C1 10.1 1.7 6.6 4.6 5.1c2.3-1.2 4.9-.4 6.4 1.5l1 1.3 1-1.3c1.5-1.9 4.1-2.7 6.4-1.5 2.9 1.5 3.6 5 1.9 7.8C18.7 16.65 12 21 12 21z" />
           </svg>
-          <p className="text-base font-medium text-ink-900">No favorites yet</p>
+          <p className="text-base font-medium text-text-1">No favorites yet</p>
           <p className="max-w-sm text-sm">Tap the heart on the photos you love and they&apos;ll collect here.</p>
         </div>
       );
     }
     return (
-      <div className="flex flex-col items-center justify-center gap-2 py-24 text-center text-ink-400">
-        <p className="text-base font-medium text-ink-900">No photos yet</p>
+      <div className="flex flex-col items-center justify-center gap-2 py-24 text-center text-text-2">
+        <p className="text-base font-medium text-text-1">No photos yet</p>
         <p className="max-w-sm text-sm">Check back soon — your photographer is still uploading.</p>
       </div>
     );
   }
 
   return (
-    <div className="px-2 pb-16 sm:px-4">
+    <div className="px-2 pb-16 pt-1.5 sm:px-4">
       <RowsPhotoAlbum<AlbumPhoto>
         photos={photos}
-        targetRowHeight={220}
-        spacing={4}
+        targetRowHeight={260}
+        spacing={6}
         onClick={({ index }) => openLightbox(index)}
         render={{ image: renderImage, extras: renderExtras }}
       />
       <div ref={sentinelRef} className="h-1" />
       {query.isFetchingNextPage && (
         <div className="flex justify-center py-6">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-ink-200 border-t-ink-900" />
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-line border-t-text-1" />
         </div>
       )}
 
@@ -326,7 +340,7 @@ export function PhotoGrid({
               const id = photos[lightboxIndex]?.id;
               if (id) toggleFavorite.mutate(id);
             }}
-            className="tap-target on-dark fixed bottom-8 left-1/2 z-[10000] flex -translate-x-1/2 items-center justify-center rounded-full bg-ink-950/60 px-5 text-white backdrop-blur transition-transform active:scale-90"
+            className="tap-target on-dark fixed bottom-8 left-1/2 z-[10000] flex -translate-x-1/2 items-center justify-center rounded-full bg-black/55 px-5 text-white ring-1 ring-white/15 backdrop-blur transition-transform active:scale-90"
           >
             <HeartIcon filled={Boolean(photos[lightboxIndex]?.favorited)} />
             <span className="ml-2 text-sm font-medium">
@@ -338,7 +352,7 @@ export function PhotoGrid({
               href={`${photos[lightboxIndex]!.urls.original}?download=1`}
               download
               aria-label="Download this photo"
-              className="tap-target on-dark fixed bottom-8 right-4 z-[10000] flex items-center justify-center rounded-full bg-ink-950/60 text-white backdrop-blur transition-transform active:scale-90"
+              className="tap-target on-dark fixed bottom-8 right-4 z-[10000] flex items-center justify-center rounded-full bg-black/55 text-white ring-1 ring-white/15 backdrop-blur transition-transform active:scale-90"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
                 <path d="M12 3v12m0 0l-4-4m4 4l4-4M4 19h16" strokeLinecap="round" strokeLinejoin="round" />

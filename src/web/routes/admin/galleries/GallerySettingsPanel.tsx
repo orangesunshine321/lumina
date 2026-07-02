@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../../../lib/api.ts";
 import type { GalleryDTO } from "../../../lib/types.ts";
 
@@ -9,7 +8,6 @@ export function GallerySettingsPanel(props: {
   onDeleted: () => void;
 }) {
   const { gallery, onUpdated, onDeleted } = props;
-  const queryClient = useQueryClient();
 
   const [title, setTitle] = useState(gallery.title);
   const [titleSaving, setTitleSaving] = useState(false);
@@ -28,10 +26,6 @@ export function GallerySettingsPanel(props: {
   const [linkBusy, setLinkBusy] = useState(false);
   const [linkDone, setLinkDone] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
-
-  const [reorderBusy, setReorderBusy] = useState<"capturedAt" | "filename" | null>(null);
-  const [reorderDone, setReorderDone] = useState(false);
-  const [reorderError, setReorderError] = useState<string | null>(null);
 
   const [deleteArmed, setDeleteArmed] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -130,22 +124,6 @@ export function GallerySettingsPanel(props: {
     }
   }
 
-  async function reorder(by: "capturedAt" | "filename") {
-    setReorderBusy(by);
-    setReorderError(null);
-    setReorderDone(false);
-    try {
-      await api.post(`/api/admin/galleries/${gallery.id}/reorder`, { by });
-      queryClient.invalidateQueries({ queryKey: ["admin-gallery-photos", gallery.id] });
-      setReorderDone(true);
-      setTimeout(() => setReorderDone(false), 2000);
-    } catch {
-      setReorderError("Couldn't reorder the photos. Try again.");
-    } finally {
-      setReorderBusy(null);
-    }
-  }
-
   async function handleDelete() {
     if (!deleteArmed) {
       setDeleteArmed(true);
@@ -164,24 +142,24 @@ export function GallerySettingsPanel(props: {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <section className="rounded-2xl border border-ink-100 bg-white p-5">
-        <h3 className="text-sm font-medium text-ink-900">Title</h3>
+    <div className="flex flex-col gap-4">
+      <section className="rounded-2xl border border-line bg-surface p-5">
+        <h3 className="text-sm font-semibold text-text-1">Title</h3>
         <div className="mt-3 flex items-center gap-2">
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             onBlur={saveTitle}
-            className="w-full max-w-sm rounded-lg border border-ink-200 px-3 py-2 text-sm text-ink-900 outline-none focus:border-ink-900 focus:ring-2 focus:ring-ink-900/10"
+            className="w-full max-w-sm rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-text-1 outline-none transition-colors focus:border-line-strong"
           />
-          {titleSaving && <span className="text-xs text-ink-400">Saving…</span>}
+          {titleSaving && <span className="text-xs text-text-3">Saving…</span>}
         </div>
         {titleError && <p className="mt-2 text-sm text-accent-500">{titleError}</p>}
       </section>
 
-      <section className="rounded-2xl border border-ink-100 bg-white p-5">
-        <h3 className="text-sm font-medium text-ink-900">Password</h3>
-        <p className="mt-1 text-xs text-ink-400">
+      <section className="rounded-2xl border border-line bg-surface p-5">
+        <h3 className="text-sm font-semibold text-text-1">Access</h3>
+        <p className="mt-0.5 text-xs text-text-3">
           {gallery.hasPassword
             ? "This gallery currently requires a password to view."
             : "This gallery has no password — anyone with the link can view it."}
@@ -192,12 +170,12 @@ export function GallerySettingsPanel(props: {
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             placeholder={gallery.hasPassword ? "New password" : "Set a password"}
-            className="w-full max-w-sm rounded-lg border border-ink-200 px-3 py-2 text-sm text-ink-900 outline-none focus:border-ink-900 focus:ring-2 focus:ring-ink-900/10"
+            className="w-full max-w-sm rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-text-1 outline-none transition-colors placeholder:text-text-3 focus:border-line-strong"
           />
           <button
             onClick={setOrUpdatePassword}
             disabled={passwordSaving || !newPassword}
-            className="shrink-0 rounded-lg border border-ink-200 px-3 py-2 text-sm font-medium text-ink-700 transition-colors hover:bg-ink-100 disabled:opacity-50"
+            className="shrink-0 rounded-lg border border-line px-3 py-2 text-sm font-medium text-text-1 transition-colors hover:bg-surface-2 disabled:opacity-50"
           >
             {gallery.hasPassword ? "Update" : "Set password"}
           </button>
@@ -206,21 +184,17 @@ export function GallerySettingsPanel(props: {
           <button
             onClick={removePassword}
             disabled={passwordSaving}
-            className="mt-3 text-sm font-medium text-ink-600 underline decoration-ink-300 underline-offset-2 hover:text-ink-900 disabled:opacity-50"
+            className="mt-3 text-sm font-medium text-text-2 underline decoration-line-strong underline-offset-2 transition-colors hover:text-text-1 disabled:opacity-50"
           >
             Remove password
           </button>
         )}
         {passwordError && <p className="mt-2 text-sm text-accent-500">{passwordError}</p>}
-      </section>
 
-      <section className="rounded-2xl border border-ink-100 bg-white p-5">
-        <h3 className="text-sm font-medium text-ink-900">Sharing</h3>
-
-        <div className="mt-3 flex items-start justify-between gap-4">
+        <div className="mt-5 flex items-start justify-between gap-4 border-t border-line pt-4">
           <div>
-            <p className="text-sm text-ink-700">Allow client downloads</p>
-            <p className="mt-0.5 text-xs text-ink-400">
+            <p className="text-sm text-text-1">Allow client downloads</p>
+            <p className="mt-0.5 text-xs text-text-3">
               Lets visitors download full-resolution originals — individually and as a zip.
             </p>
           </div>
@@ -230,21 +204,21 @@ export function GallerySettingsPanel(props: {
             aria-label="Allow client downloads"
             onClick={toggleDownloads}
             className={`relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors ${
-              allowDownloads ? "bg-ink-900" : "bg-ink-200"
+              allowDownloads ? "bg-text-1" : "bg-surface-3"
             }`}
           >
             <span
-              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-[left] ${
-                allowDownloads ? "left-[22px]" : "left-0.5"
+              className={`absolute top-0.5 h-5 w-5 rounded-full shadow-sm transition-[left] ${
+                allowDownloads ? "left-[22px] bg-invert" : "left-0.5 bg-text-3"
               }`}
             />
           </button>
         </div>
         {downloadsError && <p className="mt-2 text-sm text-accent-500">{downloadsError}</p>}
 
-        <div className="mt-5 border-t border-ink-100 pt-4">
-          <p className="text-sm text-ink-700">Gallery link</p>
-          <p className="mt-0.5 text-xs text-ink-400">
+        <div className="mt-5 border-t border-line pt-4">
+          <p className="text-sm text-text-1">Gallery link</p>
+          <p className="mt-0.5 text-xs text-text-3">
             If the link has spread further than you intended, issue a new one. The current link
             will stop working immediately.
           </p>
@@ -252,54 +226,28 @@ export function GallerySettingsPanel(props: {
             <button
               onClick={regenerateLink}
               disabled={linkBusy}
-              className="rounded-lg border border-ink-200 px-3 py-2 text-sm font-medium text-ink-700 transition-colors hover:bg-ink-100 disabled:opacity-50"
+              className="rounded-lg border border-line px-3 py-2 text-sm font-medium text-text-1 transition-colors hover:bg-surface-2 disabled:opacity-50"
             >
               {linkBusy ? "Creating…" : linkArmed ? "Confirm — replace the link" : "Get a new link"}
             </button>
             {linkArmed && !linkBusy && (
               <button
                 onClick={() => setLinkArmed(false)}
-                className="text-sm font-medium text-ink-400 hover:text-ink-900"
+                className="text-sm font-medium text-text-3 transition-colors hover:text-text-1"
               >
                 Cancel
               </button>
             )}
-            {linkDone && <span className="text-sm text-ink-600">New link created.</span>}
+            {linkDone && <span className="text-sm text-text-2">New link created.</span>}
           </div>
           {linkError && <p className="mt-2 text-sm text-accent-500">{linkError}</p>}
         </div>
       </section>
 
-      <section className="rounded-2xl border border-ink-100 bg-white p-5">
-        <h3 className="text-sm font-medium text-ink-900">Photo order</h3>
-        <p className="mt-1 text-xs text-ink-400">
-          Photos are shown in upload (filename) order. Reorder by capture time if a multi-camera
-          shoot interleaved wrongly.
-        </p>
-        <div className="mt-3 flex items-center gap-2">
-          <button
-            onClick={() => reorder("capturedAt")}
-            disabled={reorderBusy !== null}
-            className="rounded-lg border border-ink-200 px-3 py-2 text-sm font-medium text-ink-700 transition-colors hover:bg-ink-100 disabled:opacity-50"
-          >
-            {reorderBusy === "capturedAt" ? "Reordering…" : "By capture time"}
-          </button>
-          <button
-            onClick={() => reorder("filename")}
-            disabled={reorderBusy !== null}
-            className="rounded-lg border border-ink-200 px-3 py-2 text-sm font-medium text-ink-700 transition-colors hover:bg-ink-100 disabled:opacity-50"
-          >
-            {reorderBusy === "filename" ? "Reordering…" : "By filename"}
-          </button>
-          {reorderDone && <span className="text-sm text-ink-600">Reordered.</span>}
-        </div>
-        {reorderError && <p className="mt-2 text-sm text-accent-500">{reorderError}</p>}
-      </section>
-
-      <section className="rounded-2xl border border-accent-500/20 bg-white p-5">
-        <h3 className="text-sm font-medium text-ink-900">Delete gallery</h3>
-        <p className="mt-1 text-xs text-ink-400">
-          Permanently deletes this gallery, its photos, and all favorites. This can't be undone.
+      <section className="rounded-2xl border border-accent-500/25 bg-surface p-5">
+        <h3 className="text-sm font-semibold text-text-1">Delete gallery</h3>
+        <p className="mt-0.5 text-xs text-text-3">
+          Permanently deletes this gallery, its photos, and all favorites. This can&apos;t be undone.
         </p>
         <button
           onClick={handleDelete}

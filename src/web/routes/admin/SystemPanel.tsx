@@ -36,7 +36,7 @@ export function SystemPanel() {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-2xl border border-ink-100 bg-white px-5 py-3 text-xs text-ink-400">
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-2xl border border-line bg-surface px-5 py-3 text-xs text-text-3">
       <Stat label="Galleries" value={String(library.galleries)} />
       <Stat label="Photos" value={String(library.photos)} />
       <Stat label="Library" value={formatBytes(library.originalsBytes)} />
@@ -52,7 +52,7 @@ export function SystemPanel() {
             />
           </svg>
         )}
-        <span className="font-medium text-ink-600">Backup</span>
+        <span className="font-medium text-text-2">Backup</span>
         {backup.lastBackupAt ? new Date(backup.lastBackupAt).toLocaleString() : "not yet run"}
       </span>
 
@@ -60,19 +60,19 @@ export function SystemPanel() {
         <button
           onClick={() => void runBackupNow()}
           disabled={backingUp}
-          className="font-medium text-ink-600 underline decoration-ink-300 underline-offset-2 transition-colors hover:text-ink-900 disabled:opacity-50"
+          className="font-medium text-text-2 underline decoration-line-strong underline-offset-2 transition-colors hover:text-text-1 disabled:opacity-50"
         >
           {backingUp ? "Backing up…" : backupDone ? "Done" : "Back up now"}
         </button>
         {backup.lastBackupAt ? (
           <a
             href="/api/admin/backup/download"
-            className="font-medium text-ink-600 underline decoration-ink-300 underline-offset-2 transition-colors hover:text-ink-900"
+            className="font-medium text-text-2 underline decoration-line-strong underline-offset-2 transition-colors hover:text-text-1"
           >
             Download backup
           </a>
         ) : (
-          <span className="cursor-not-allowed font-medium text-ink-300">Download backup</span>
+          <span className="cursor-not-allowed font-medium text-text-3/60">Download backup</span>
         )}
       </span>
 
@@ -94,7 +94,7 @@ export function SystemPanel() {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <span className="flex items-center gap-1.5">
-      <span className="font-medium text-ink-600">{label}</span>
+      <span className="font-medium text-text-2">{label}</span>
       {value}
     </span>
   );

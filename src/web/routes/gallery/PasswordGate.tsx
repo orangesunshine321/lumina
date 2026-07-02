@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { api, ApiError } from "../../lib/api.ts";
 
-/** A client's first impression is often this screen — it carries the same
- * typographic voice as the gallery it protects. */
+/** A client's first impression is often this screen — a velvet rope, not a
+ * login form: quiet canvas, display-type title, one field on a soft surface. */
 export function PasswordGate({
   slug,
   title,
@@ -40,16 +40,22 @@ export function PasswordGate({
   }
 
   return (
-    <div className="flex min-h-screen w-screen flex-col items-center justify-center bg-ink-50 px-4">
+    <div className="flex min-h-screen w-screen flex-col items-center justify-center bg-canvas px-4">
       <div className="w-full max-w-sm text-center">
-        <h1 className="font-display text-3xl font-light tracking-wide text-ink-900 sm:text-4xl">
-          {title ?? "Private gallery"}
+        <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-text-3">
+          Private gallery
+        </p>
+        <h1 className="mt-3 font-display text-3xl font-light tracking-wide text-text-1 sm:text-4xl">
+          {title ?? "Your photos"}
         </h1>
-        <p className="mt-3 text-sm text-ink-400">
-          This gallery is private. Enter the password your photographer shared with you.
+        <p className="mt-3 text-sm text-text-2">
+          Enter the password your photographer shared with you.
         </p>
 
-        <form onSubmit={handleSubmit} className="mt-8 flex flex-col gap-3 text-left">
+        <form
+          onSubmit={handleSubmit}
+          className="mt-8 flex flex-col gap-3 rounded-2xl border border-line bg-surface p-6 text-left shadow-lg shadow-black/10"
+        >
           <label htmlFor="gallery-password" className="sr-only">
             Gallery password
           </label>
