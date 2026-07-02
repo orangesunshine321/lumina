@@ -10,14 +10,24 @@ A self-hosted, leaner alternative to Pixieset for one specific workflow: share a
 
 ## Quick start
 
-Requires [Docker](https://docs.docker.com/get-docker/) and Docker Compose (bundled with Docker Desktop and modern Docker Engine installs).
+Requires [Docker](https://docs.docker.com/get-docker/) with Compose v2 (bundled with Docker Desktop and modern Docker Engine installs).
+
+**One-line install:**
 
 ```bash
-git clone <this-repo> pixset && cd pixset
+curl -fsSL https://raw.githubusercontent.com/orangesunshine321/pixset/main/install.sh | bash
+```
+
+This installs into `./pixset`, builds the image, starts the app, and waits until it's healthy. Re-running the same command later **updates** an existing install in place — your photos and database are never touched. Use `PIXSET_DIR=...` to choose the location and `PIXSET_PORT=3005` if port 3000 is taken.
+
+**Or manually:**
+
+```bash
+git clone https://github.com/orangesunshine321/pixset.git && cd pixset
 docker compose up -d
 ```
 
-That's the whole setup. Open `http://localhost:3000` (or your reverse-proxied domain) and complete the one-time admin setup form. No `.env` is required — the cookie-signing secret is generated automatically on first boot and persisted in `./data`, and database migrations run automatically on every container start.
+Either way: open `http://localhost:3000` (or your reverse-proxied domain) and complete the one-time admin setup form. No `.env` is required — the cookie-signing secret is generated automatically on first boot and persisted in `./data`, and database migrations run automatically on every container start.
 
 ## Configuration
 
