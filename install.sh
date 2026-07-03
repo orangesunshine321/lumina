@@ -19,10 +19,30 @@ set -euo pipefail
 REPO="orangesunshine321/lumina"
 BRANCH="main"
 DEFAULT_PORT=7373
-INSTALL_DIR="${LUMINA_DIR:-$(pwd)/lumina}"
-
 say()  { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
 fail() { printf '\033[1;31mError:\033[0m %s\n' "$*" >&2; exit 1; }
+
+# A directory is an existing Lumina install if it has our compose file or an
+# existing Lumina database already sitting in it.
+is_lumina_install() {
+  { [ -f "$1/docker-compose.yml" ] && grep -q "$REPO" "$1/docker-compose.yml" 2>/dev/null; } \
+    || [ -f "$1/data/db/app.sqlite" ]
+}
+
+# Resolve where to install. This deliberately avoids the trap where re-running
+# the installer from a different working directory — or from *inside* the
+# existing install — creates a second, EMPTY ./lumina and orphans your real
+# gallery data in the original folder:
+#   1. explicit LUMINA_DIR always wins
+#   2. if you're already standing in a Lumina install, update it in place
+#   3. otherwise, install fresh into ./lumina
+if [ -n "${LUMINA_DIR:-}" ]; then
+  INSTALL_DIR="$LUMINA_DIR"
+elif is_lumina_install "$(pwd)"; then
+  INSTALL_DIR="$(pwd)"
+else
+  INSTALL_DIR="$(pwd)/lumina"
+fi
 
 port_in_use() {
   command -v nc >/dev/null 2>&1 && nc -z 127.0.0.1 "$1" >/dev/null 2>&1
@@ -41,7 +61,7 @@ docker info >/dev/null 2>&1 || fail "Docker is installed but the daemon isn't ru
 docker compose version >/dev/null 2>&1 || fail "Docker Compose v2 is required (the 'docker compose' command). Update Docker and re-run."
 
 UPDATE=""
-if [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
+if is_lumina_install "$INSTALL_DIR"; then
   UPDATE="yes"
 fi
 
@@ -87,9 +107,11 @@ fi
 # --- Download ----------------------------------------------------------------
 
 if [ -n "$UPDATE" ]; then
-  say "Existing install found — updating in place (your data/ directory is untouched)."
+  say "Existing install found at $INSTALL_DIR — updating in place (your data/ is untouched)."
 else
-  say "Installing Lumina into $INSTALL_DIR"
+  say "Installing a fresh Lumina into $INSTALL_DIR"
+  say "  If you already run Lumina elsewhere, cancel (Ctrl-C) and re-run from inside"
+  say "  that folder — or set LUMINA_DIR=/path/to/it — so your galleries aren't left behind."
 fi
 
 TMP="$(mktemp -d)"

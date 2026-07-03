@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import Lightbox from "yet-another-react-lightbox";
+import Zoom from "yet-another-react-lightbox/plugins/zoom";
 import "yet-another-react-lightbox/styles.css";
 import { api } from "../../../lib/api.ts";
 import { lightboxSlide } from "../../../lib/slides.ts";
@@ -391,6 +392,8 @@ export function AdminPhotoGrid({
           open
           close={() => setLightboxIndex(null)}
           index={lightboxIndex}
+          plugins={[Zoom]}
+          zoom={{ maxZoomPixelRatio: 3, doubleClickMaxStops: 2 }}
           on={{ view: ({ index }) => setLightboxIndex(index) }}
           slides={readyPhotos.map((p) => lightboxSlide(p))}
           render={{
