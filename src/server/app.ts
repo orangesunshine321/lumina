@@ -16,6 +16,7 @@ import { exportRoutes } from "./routes/admin/export.ts";
 import { publicGalleryRoutes } from "./routes/gallery/public.ts";
 import { systemRoutes } from "./routes/admin/system.ts";
 import { photoManageRoutes } from "./routes/admin/photosManage.ts";
+import { setRoutes } from "./routes/admin/sets.ts";
 import { accountRoutes } from "./routes/admin/account.ts";
 import { settingsRoutes } from "./routes/admin/settings.ts";
 import { networkRoutes } from "./routes/admin/network.ts";
@@ -110,6 +111,7 @@ export async function buildApp() {
   await app.register(publicGalleryRoutes);
   await app.register(systemRoutes);
   await app.register(photoManageRoutes);
+  await app.register(setRoutes);
   await app.register(accountRoutes);
   await app.register(settingsRoutes);
   await app.register(networkRoutes);

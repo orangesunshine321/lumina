@@ -1,11 +1,23 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type InfiniteData,
+} from "@tanstack/react-query";
 import Lightbox from "yet-another-react-lightbox";
 import Zoom from "yet-another-react-lightbox/plugins/zoom";
 import "yet-another-react-lightbox/styles.css";
 import { api } from "../../../lib/api.ts";
 import { lightboxSlide } from "../../../lib/slides.ts";
-import { photoUrl, type GalleryDTO, type PhotoDTO, type PhotoListResponse } from "../../../lib/types.ts";
+import {
+  photoUrl,
+  type GalleryDTO,
+  type PhotoDTO,
+  type PhotoListResponse,
+  type SetsResponse,
+} from "../../../lib/types.ts";
 
 interface ProgressEvent {
   galleryId: string;
@@ -50,9 +62,19 @@ export function AdminPhotoGrid({
 }) {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<GridFilter>("all");
-  const queryKey = ["admin-gallery-photos", galleryId, filter];
+  // null = all sets, "ungrouped" = photos in no set, otherwise a set id.
+  const [activeSet, setActiveSet] = useState<string | null>(null);
+  const queryKey = ["admin-gallery-photos", galleryId, filter, activeSet ?? "*"];
   const listPrefix = ["admin-gallery-photos", galleryId];
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  const setsQuery = useQuery({
+    queryKey: ["admin-sets", galleryId],
+    queryFn: () => api.get<SetsResponse>(`/api/admin/galleries/${galleryId}/sets`),
+    staleTime: 30_000,
+  });
+  const sets = setsQuery.data?.sets ?? [];
+  const ungroupedCount = setsQuery.data?.ungroupedCount ?? 0;
 
   const [selectionMode, setSelectionMode] = useState(false);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
@@ -66,6 +88,7 @@ export function AdminPhotoGrid({
     queryFn: ({ pageParam }) => {
       const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
       if (filter !== "all") params.set("filter", filter);
+      if (activeSet) params.set("setId", activeSet);
       if (pageParam) params.set("cursor", pageParam);
       return api.get<PhotoListResponse>(`/api/admin/galleries/${galleryId}/photos?${params.toString()}`);
     },
@@ -228,6 +251,20 @@ export function AdminPhotoGrid({
     onError: () => setActionError("Couldn't reorder the photos. Try again."),
   });
 
+  const assignToSet = useMutation({
+    mutationFn: (setId: string | null) =>
+      api.post<{ assigned: number }>(`/api/admin/galleries/${galleryId}/photos/assign`, {
+        photoIds: [...selected],
+        setId,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: listPrefix });
+      queryClient.invalidateQueries({ queryKey: ["admin-sets", galleryId] });
+      exitSelectionMode();
+    },
+    onError: () => setActionError("Couldn't move the selected photos. Try again."),
+  });
+
   function exitSelectionMode() {
     setSelectionMode(false);
     setSelected(new Set());
@@ -284,6 +321,14 @@ export function AdminPhotoGrid({
               >
                 {coverJustSet ? "Cover set!" : "Set as cover"}
               </button>
+              {sets.length > 0 && (
+                <MoveToSetMenu
+                  sets={sets}
+                  disabled={selected.size === 0 || assignToSet.isPending}
+                  pending={assignToSet.isPending}
+                  onSelect={(setId) => assignToSet.mutate(setId)}
+                />
+              )}
               <button
                 onClick={handleDeleteClick}
                 disabled={selected.size === 0 || deletePhotos.isPending}
@@ -330,6 +375,24 @@ export function AdminPhotoGrid({
           </>
         )}
       </div>
+      {!selectionMode && sets.length > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          <FilterPill active={activeSet === null} onClick={() => setActiveSet(null)}>
+            All sets
+          </FilterPill>
+          {sets.map((s) => (
+            <FilterPill key={s.id} active={activeSet === s.id} onClick={() => setActiveSet(s.id)}>
+              {s.title} <PillCount value={s.photoCount} />
+              {!s.visibleToClient && <span className="text-text-3">· hidden</span>}
+            </FilterPill>
+          ))}
+          {ungroupedCount > 0 && (
+            <FilterPill active={activeSet === "ungrouped"} onClick={() => setActiveSet("ungrouped")}>
+              Unsorted <PillCount value={ungroupedCount} />
+            </FilterPill>
+          )}
+        </div>
+      )}
       {actionError && <p className="mt-2 text-sm text-accent-500">{actionError}</p>}
 
       {query.isLoading && (
@@ -524,6 +587,82 @@ function SortMenu({
               {option.label}
             </button>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MoveToSetMenu({
+  sets,
+  disabled,
+  pending,
+  onSelect,
+}: {
+  sets: { id: string; title: string }[];
+  disabled: boolean;
+  pending: boolean;
+  onSelect: (setId: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-text-1 transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        {pending ? "Moving…" : "Move to…"}
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 top-full z-20 mt-1 max-h-64 w-52 overflow-y-auto rounded-xl border border-line-strong bg-surface-2 py-1 shadow-xl shadow-black/20"
+        >
+          {sets.map((s) => (
+            <button
+              key={s.id}
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onSelect(s.id);
+              }}
+              className="block w-full truncate px-4 py-2 text-left text-sm text-text-1 transition-colors hover:bg-surface-3"
+            >
+              {s.title}
+            </button>
+          ))}
+          <div className="my-1 border-t border-line" />
+          <button
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onSelect(null);
+            }}
+            className="block w-full px-4 py-2 text-left text-sm text-text-2 transition-colors hover:bg-surface-3"
+          >
+            Remove from set (Unsorted)
+          </button>
         </div>
       )}
     </div>

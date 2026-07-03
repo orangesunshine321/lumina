@@ -50,6 +50,13 @@
       "when": 1783102645973,
       "tag": "0006_overrated_masque",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1783112201067,
+      "tag": "0007_illegal_centennial",
+      "breakpoints": true
     }
   ]
 }

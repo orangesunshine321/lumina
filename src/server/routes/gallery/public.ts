@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { and, asc, eq, gt, isNotNull, sql } from "drizzle-orm";
+import { and, asc, eq, gt, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db, schema } from "../../db/client.ts";
 import {
   hasGalleryAccess,
@@ -15,7 +15,7 @@ import {
   verifyPassword,
 } from "../../services/auth.ts";
 import { checkRateLimit, recordAttempt } from "../../services/rateLimiter.ts";
-import { streamGalleryZip } from "../../services/zip.ts";
+import { collectZipEntries, streamPhotoZip } from "../../services/zip.ts";
 import { notifySelectionSubmitted } from "../../services/notify.ts";
 import { ensureClientToken, getClientIp } from "../../lib/http.ts";
 import { config } from "../../config.ts";
@@ -46,8 +46,11 @@ export async function publicGalleryRoutes(app: FastifyInstance) {
         expired: true,
         photoCount: 0,
         favoriteCount: 0,
+        downloadableFavoriteCount: 0,
         allowDownloads: false,
         coverPhotoId: null,
+        sets: [],
+        ungroupedCount: 0,
       };
     }
 
@@ -55,20 +58,59 @@ export async function publicGalleryRoutes(app: FastifyInstance) {
     const hasAccess = await hasGalleryAccess(request, gallery);
 
     // Counts only past the password gate — a locked gallery reveals nothing
-    // beyond its title and that it exists.
+    // beyond its title and that it exists (and must NOT leak set names/counts).
     let photoCount = 0;
     let favoriteCount = 0;
+    let downloadableFavoriteCount = 0;
+    let ungroupedCount = 0;
+    let coverPhotoId: string | null = null;
+    let sets: { id: string; title: string; allowDownloads: boolean; photoCount: number }[] = [];
     if (hasAccess) {
-      const [photos] = await db
-        .select({ count: sql<number>`count(*)` })
+      const allSets = await db
+        .select()
+        .from(schema.photoSets)
+        .where(eq(schema.photoSets.galleryId, gallery.id))
+        .orderBy(asc(schema.photoSets.sortIndex));
+
+      // Ready-photo counts keyed by setId (null = ungrouped), in one grouped query.
+      const grouped = await db
+        .select({ setId: schema.photos.setId, count: sql<number>`count(*)` })
         .from(schema.photos)
-        .where(and(eq(schema.photos.galleryId, gallery.id), eq(schema.photos.status, "ready")));
-      const [favorites] = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(schema.favorites)
-        .where(eq(schema.favorites.galleryId, gallery.id));
-      photoCount = photos?.count ?? 0;
-      favoriteCount = favorites?.count ?? 0;
+        .where(and(eq(schema.photos.galleryId, gallery.id), eq(schema.photos.status, "ready")))
+        .groupBy(schema.photos.setId);
+      const countBy = new Map(grouped.map((g) => [g.setId, g.count]));
+
+      ungroupedCount = countBy.get(null) ?? 0;
+      photoCount = ungroupedCount; // client-visible total: ungrouped + visible sets only
+      for (const s of allSets) {
+        if (!s.visibleToClient) continue; // hidden sets are invisible to the client
+        const c = countBy.get(s.id) ?? 0;
+        photoCount += c;
+        sets.push({ id: s.id, title: s.title, allowDownloads: s.allowDownloads, photoCount: c });
+      }
+
+      // Favorites among CLIENT-VISIBLE photos only (a pick in a since-hidden set
+      // shouldn't inflate the count the client sees), and how many of those the
+      // client may actually download (drives the "Download favorites" option).
+      favoriteCount = await countVisibleFavorites(gallery.id);
+      downloadableFavoriteCount = await countDownloadableFavorites(gallery.id, gallery.allowDownloads);
+
+      // Only expose the cover if the client can actually see it — a cover photo
+      // in a hidden set would 404 on fetch and leave the hero broken.
+      if (gallery.coverPhotoId) {
+        const [cover] = await db
+          .select({ id: schema.photos.id })
+          .from(schema.photos)
+          .leftJoin(schema.photoSets, eq(schema.photoSets.id, schema.photos.setId))
+          .where(
+            and(
+              eq(schema.photos.id, gallery.coverPhotoId),
+              or(isNull(schema.photos.setId), eq(schema.photoSets.visibleToClient, true)),
+            ),
+          )
+          .limit(1);
+        coverPhotoId = cover?.id ?? null;
+      }
     }
 
     return {
@@ -79,31 +121,101 @@ export async function publicGalleryRoutes(app: FastifyInstance) {
       expired: false,
       photoCount,
       favoriteCount,
+      downloadableFavoriteCount,
       allowDownloads: hasAccess ? gallery.allowDownloads : false,
-      coverPhotoId: hasAccess ? gallery.coverPhotoId : null,
+      coverPhotoId,
       selectionSubmittedAt:
         hasAccess && gallery.selectionSubmittedAt ? gallery.selectionSubmittedAt.toISOString() : null,
+      sets,
+      ungroupedCount,
     };
   });
 
   /** Client-facing zip download — only when the photographer has opted the
    * gallery into downloads, and always behind the same access gate as the
    * photos themselves. */
-  app.get<{ Params: { slug: string }; Querystring: { scope?: string } }>(
+  app.get<{ Params: { slug: string }; Querystring: { scope?: string; setId?: string } }>(
     "/api/gallery/:slug/download",
     { preHandler: requireGalleryAccess },
     async (request, reply) => {
       const gallery = request.gallery!;
-      if (!gallery.allowDownloads) {
+      const scope = request.query.scope ?? "all";
+      const requestedSetId = request.query.setId;
+
+      // Nothing is downloadable unless the gallery-level toggle is on (ungrouped
+      // photos) OR at least one set is both visible and downloadable. If neither,
+      // downloads are effectively disabled — a clear 403, not an empty archive.
+      const [downloadableSet] = await db
+        .select({ id: schema.photoSets.id })
+        .from(schema.photoSets)
+        .where(
+          and(
+            eq(schema.photoSets.galleryId, gallery.id),
+            eq(schema.photoSets.visibleToClient, true),
+            eq(schema.photoSets.allowDownloads, true),
+          ),
+        )
+        .limit(1);
+      if (!gallery.allowDownloads && !downloadableSet) {
         return reply.code(403).send({ error: "downloads_disabled" });
       }
-      const scope = request.query.scope ?? "all";
-      if (scope !== "all" && scope !== "favorites") {
+
+      let entries;
+      let filenameBase: string;
+      let emptyError: string;
+
+      if (scope === "favorites") {
+        // Only favorites the client is actually allowed to download (visible +
+        // downloadable sets, or ungrouped if the gallery permits it).
+        entries = await collectZipEntries({
+          galleryId: gallery.id,
+          scope: "favorites",
+          visibleOnly: true,
+          downloadableOnly: true,
+          galleryAllowDownloads: gallery.allowDownloads,
+        });
+        filenameBase = `${gallery.title}-favorites`;
+        emptyError = "no_favorites";
+      } else if (scope === "set") {
+        if (!requestedSetId) return reply.code(400).send({ error: "invalid_scope" });
+        if (requestedSetId === "ungrouped") {
+          if (!gallery.allowDownloads) return reply.code(403).send({ error: "downloads_disabled" });
+          entries = await collectZipEntries({ galleryId: gallery.id, scope: "set", setId: "ungrouped" });
+          filenameBase = gallery.title;
+        } else {
+          const [set] = await db
+            .select()
+            .from(schema.photoSets)
+            .where(and(eq(schema.photoSets.id, requestedSetId), eq(schema.photoSets.galleryId, gallery.id)))
+            .limit(1);
+          if (!set) return reply.code(404).send({ error: "not_found" });
+          // A hidden or non-downloadable set is never downloadable by the client.
+          if (!set.visibleToClient || !set.allowDownloads) {
+            return reply.code(403).send({ error: "downloads_disabled" });
+          }
+          entries = await collectZipEntries({ galleryId: gallery.id, scope: "set", setId: set.id });
+          filenameBase = set.title;
+        }
+        emptyError = "no_photos";
+      } else if (scope === "all") {
+        // Everything the client may download, foldered by set.
+        entries = await collectZipEntries({
+          galleryId: gallery.id,
+          scope: "all",
+          visibleOnly: true,
+          downloadableOnly: true,
+          galleryAllowDownloads: gallery.allowDownloads,
+          folderBySet: true,
+        });
+        filenameBase = gallery.title;
+        emptyError = "no_photos";
+      } else {
         return reply.code(400).send({ error: "invalid_scope" });
       }
-      const streamed = await streamGalleryZip(request, reply, gallery, scope);
+
+      const streamed = await streamPhotoZip(request, reply, filenameBase, entries);
       if (!streamed) {
-        return reply.code(400).send({ error: scope === "favorites" ? "no_favorites" : "no_photos" });
+        return reply.code(400).send({ error: emptyError });
       }
     },
   );
@@ -171,7 +283,7 @@ export async function publicGalleryRoutes(app: FastifyInstance) {
 
   app.get<{
     Params: { slug: string };
-    Querystring: { cursor?: string; limit?: string; favorites?: string };
+    Querystring: { cursor?: string; limit?: string; favorites?: string; setId?: string };
   }>(
     "/api/gallery/:slug/photos",
     { preHandler: requireGalleryAccess },
@@ -180,10 +292,20 @@ export async function publicGalleryRoutes(app: FastifyInstance) {
       const limit = Math.min(Number(request.query.limit ?? DEFAULT_PAGE_SIZE) || DEFAULT_PAGE_SIZE, 500);
       const cursor = request.query.cursor ? Number(request.query.cursor) : undefined;
       const favoritesOnly = request.query.favorites === "1" || request.query.favorites === "true";
+      const setFilter = request.query.setId;
 
       const conditions = [eq(schema.photos.galleryId, gallery.id), eq(schema.photos.status, "ready")];
       if (cursor !== undefined) conditions.push(gt(schema.photos.sortIndex, cursor));
       if (favoritesOnly) conditions.push(isNotNull(schema.favorites.id));
+      // Never surface photos in a set the client can't see. A request for a
+      // hidden set therefore just comes back empty (this condition kills it).
+      conditions.push(or(isNull(schema.photos.setId), eq(schema.photoSets.visibleToClient, true))!);
+      // Optional per-set view ("ungrouped" = photos in no set).
+      if (setFilter === "ungrouped") {
+        conditions.push(isNull(schema.photos.setId));
+      } else if (setFilter) {
+        conditions.push(eq(schema.photos.setId, setFilter));
+      }
 
       const rows = await db
         .select({ photo: schema.photos, favoriteId: schema.favorites.id })
@@ -192,6 +314,7 @@ export async function publicGalleryRoutes(app: FastifyInstance) {
           schema.favorites,
           and(eq(schema.favorites.galleryId, schema.photos.galleryId), eq(schema.favorites.photoId, schema.photos.id)),
         )
+        .leftJoin(schema.photoSets, eq(schema.photoSets.id, schema.photos.setId))
         .where(and(...conditions))
         .orderBy(asc(schema.photos.sortIndex))
         .limit(limit);
@@ -211,11 +334,16 @@ export async function publicGalleryRoutes(app: FastifyInstance) {
       const { photoId } = request.params;
 
       const [photo] = await db
-        .select({ id: schema.photos.id })
+        .select({ id: schema.photos.id, setId: schema.photos.setId, setVisible: schema.photoSets.visibleToClient })
         .from(schema.photos)
+        .leftJoin(schema.photoSets, eq(schema.photoSets.id, schema.photos.setId))
         .where(and(eq(schema.photos.id, photoId), eq(schema.photos.galleryId, gallery.id)))
         .limit(1);
-      if (!photo) return reply.code(404).send({ error: "not_found" });
+      // A photo in a hidden set isn't visible to the client, so it can't be
+      // favorited either — treat it as not found.
+      if (!photo || (photo.setId && photo.setVisible === false)) {
+        return reply.code(404).send({ error: "not_found" });
+      }
 
       const [existing] = await db
         .select({ id: schema.favorites.id })
@@ -260,11 +388,9 @@ export async function publicGalleryRoutes(app: FastifyInstance) {
     async (request) => {
       const gallery = request.gallery!;
 
-      const [fav] = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(schema.favorites)
-        .where(eq(schema.favorites.galleryId, gallery.id));
-      const favoriteCount = fav?.count ?? 0;
+      // Same visibility-filtered count the landing shows, so a pick made in a
+      // since-hidden set isn't counted in the client's confirmation or webhook.
+      const favoriteCount = await countVisibleFavorites(gallery.id);
 
       // Debounce: this endpoint is re-submittable by design, but it fires an
       // outbound webhook and rewrites the gallery row on every call. Without a
@@ -310,6 +436,7 @@ function toPhotoDTO(photo: typeof schema.photos.$inferSelect, favorited: boolean
     thumbhash: photo.thumbhash,
     status: photo.status,
     sortIndex: photo.sortIndex,
+    setId: photo.setId,
     favorited,
     urls: {
       thumb: `/api/photos/${photo.id}/thumb`,
@@ -319,6 +446,50 @@ function toPhotoDTO(photo: typeof schema.photos.$inferSelect, favorited: boolean
       original: `/api/photos/${photo.id}/original`,
     },
   };
+}
+
+/** Count of favorited photos the client can SEE (ungrouped, or in a visible
+ * set). Shared by the landing and submit responses so both agree. */
+async function countVisibleFavorites(galleryId: string): Promise<number> {
+  const [row] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(schema.favorites)
+    .innerJoin(
+      schema.photos,
+      and(eq(schema.favorites.photoId, schema.photos.id), eq(schema.photos.status, "ready")),
+    )
+    .leftJoin(schema.photoSets, eq(schema.photoSets.id, schema.photos.setId))
+    .where(
+      and(
+        eq(schema.favorites.galleryId, galleryId),
+        or(isNull(schema.photos.setId), eq(schema.photoSets.visibleToClient, true)),
+      ),
+    );
+  return row?.count ?? 0;
+}
+
+/** Count of favorited photos the client may DOWNLOAD (ungrouped iff the gallery
+ * allows it, or in a visible + downloadable set). Drives whether "Download
+ * favorites" is offered. */
+async function countDownloadableFavorites(galleryId: string, galleryAllowDownloads: boolean): Promise<number> {
+  const [row] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(schema.favorites)
+    .innerJoin(
+      schema.photos,
+      and(eq(schema.favorites.photoId, schema.photos.id), eq(schema.photos.status, "ready")),
+    )
+    .leftJoin(schema.photoSets, eq(schema.photoSets.id, schema.photos.setId))
+    .where(
+      and(
+        eq(schema.favorites.galleryId, galleryId),
+        or(
+          galleryAllowDownloads ? isNull(schema.photos.setId) : sql`0`,
+          and(eq(schema.photoSets.visibleToClient, true), eq(schema.photoSets.allowDownloads, true)),
+        ),
+      ),
+    );
+  return row?.count ?? 0;
 }
 
 // A real Argon2id hash (computed once at boot) used to force the same

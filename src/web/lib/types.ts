@@ -38,10 +38,17 @@ export interface GalleryPublicDTO {
   favoriteCount: number;
   /** Downloads opt-in; false until access is granted. */
   allowDownloads: boolean;
+  /** How many of the client's favorites are actually downloadable (respecting
+   * per-set permissions) — gates the "Download favorites" option. */
+  downloadableFavoriteCount: number;
   /** Cover photo for the hero header; null until access is granted. */
   coverPhotoId: string | null;
   /** When the client last submitted their selection (past the gate); null if never. */
   selectionSubmittedAt: string | null;
+  /** Client-visible sets (empty when the gallery uses no sets). */
+  sets: PublicSetDTO[];
+  /** Ready photos in no set — the default/"Unsorted" grouping. */
+  ungroupedCount: number;
 }
 
 export interface SystemStatsDTO {
@@ -72,8 +79,35 @@ export interface PhotoDTO {
   thumbhash: string | null;
   status: PhotoStatus;
   sortIndex: number;
+  /** The set this photo belongs to, or null if ungrouped. */
+  setId: string | null;
   favorited?: boolean;
   urls: PhotoUrls;
+}
+
+/** A photo set as the admin manages it (both client-facing toggles visible). */
+export interface SetDTO {
+  id: string;
+  title: string;
+  sortIndex: number;
+  visibleToClient: boolean;
+  allowDownloads: boolean;
+  photoCount: number;
+  createdAt: string;
+}
+
+export interface SetsResponse {
+  sets: SetDTO[];
+  ungroupedCount: number;
+}
+
+/** A client-visible set on the public gallery landing (no hidden ones, no
+ * visibility flag — the client only ever sees sets it's allowed to). */
+export interface PublicSetDTO {
+  id: string;
+  title: string;
+  allowDownloads: boolean;
+  photoCount: number;
 }
 
 export interface PhotoListResponse {

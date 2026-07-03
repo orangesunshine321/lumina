@@ -4,7 +4,7 @@ import { mkdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import type { FastifyInstance } from "fastify";
-import { and, asc, eq, gt, ne, sql } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, ne, sql } from "drizzle-orm";
 import sharp from "sharp";
 import { db, schema } from "../../db/client.ts";
 import { config } from "../../config.ts";
@@ -24,6 +24,7 @@ function toPhotoDTO(photo: typeof schema.photos.$inferSelect, favorited = false)
     thumbhash: photo.thumbhash,
     status: photo.status,
     sortIndex: photo.sortIndex,
+    setId: photo.setId,
     favorited,
     urls: {
       thumb: `/api/photos/${photo.id}/thumb`,
@@ -87,13 +88,25 @@ export async function uploadRoutes(app: FastifyInstance) {
     },
   );
 
-  app.post<{ Params: { id: string } }>(
+  app.post<{ Params: { id: string }; Querystring: { setId?: string } }>(
     "/api/admin/galleries/:id/uploads",
     { preHandler: requireAdmin },
     async (request, reply) => {
       const { id: galleryId } = request.params;
       const [gallery] = await db.select().from(schema.galleries).where(eq(schema.galleries.id, galleryId)).limit(1);
       if (!gallery) return reply.code(404).send({ error: "not_found" });
+
+      // Optionally drop the upload straight into a set. Validate up front so a
+      // bad setId fails the whole upload rather than orphaning a stored file.
+      const targetSetId = request.query.setId?.trim() || null;
+      if (targetSetId) {
+        const [set] = await db
+          .select({ id: schema.photoSets.id })
+          .from(schema.photoSets)
+          .where(and(eq(schema.photoSets.id, targetSetId), eq(schema.photoSets.galleryId, galleryId)))
+          .limit(1);
+        if (!set) return reply.code(400).send({ error: "invalid_set" });
+      }
 
       let part;
       try {
@@ -195,6 +208,7 @@ export async function uploadRoutes(app: FastifyInstance) {
           .values({
             id: photoId,
             galleryId,
+            setId: targetSetId,
             originalFilename,
             baseFilename,
             fileExt,
@@ -238,7 +252,7 @@ export async function uploadRoutes(app: FastifyInstance) {
 
   app.get<{
     Params: { id: string };
-    Querystring: { cursor?: string; limit?: string; filter?: string };
+    Querystring: { cursor?: string; limit?: string; filter?: string; setId?: string };
   }>(
     "/api/admin/galleries/:id/photos",
     { preHandler: requireAdmin },
@@ -250,6 +264,13 @@ export async function uploadRoutes(app: FastifyInstance) {
       const conditions = [eq(schema.photos.galleryId, galleryId)];
       if (cursor !== undefined && !Number.isNaN(cursor)) {
         conditions.push(gt(schema.photos.sortIndex, cursor));
+      }
+      // Optional set filter for the admin grid ("ungrouped" = photos in no set).
+      const setFilter = request.query.setId;
+      if (setFilter === "ungrouped") {
+        conditions.push(isNull(schema.photos.setId));
+      } else if (setFilter) {
+        conditions.push(eq(schema.photos.setId, setFilter));
       }
       // Toolbar filters for the admin grid — server-side so they compose
       // with cursor pagination on large galleries.

@@ -1,8 +1,9 @@
-import { useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Uppy from "@uppy/core";
 import XHRUpload from "@uppy/xhr-upload";
 import { api } from "../../../lib/api.ts";
+import type { SetsResponse } from "../../../lib/types.ts";
 
 const INVALIDATE_THROTTLE_MS = 2000;
 
@@ -37,6 +38,16 @@ function uploadErrorMessage(xhr: XMLHttpRequest): string {
 export function UploadPanel({ galleryId }: { galleryId: string }) {
   const queryClient = useQueryClient();
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // Optional target set for this upload ("" = Unsorted). Shown only when the
+  // gallery actually has sets.
+  const setsQuery = useQuery({
+    queryKey: ["admin-sets", galleryId],
+    queryFn: () => api.get<SetsResponse>(`/api/admin/galleries/${galleryId}/sets`),
+    staleTime: 30_000,
+  });
+  const sets = setsQuery.data?.sets ?? [];
+  const [uploadSetId, setUploadSetId] = useState("");
 
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -171,6 +182,15 @@ export function UploadPanel({ galleryId }: { galleryId: string }) {
   // cleanup breaks React StrictMode's dev double-mount. This mirrors the
   // documented @uppy/react pattern for useState-owned instances.
 
+  // Point the upload endpoint at the chosen set (validated server-side). Files
+  // added after this use the current endpoint, so uploads land in the right set.
+  useEffect(() => {
+    const base = `/api/admin/galleries/${galleryId}/uploads`;
+    const endpoint = uploadSetId ? `${base}?setId=${encodeURIComponent(uploadSetId)}` : base;
+    const plugin = uppy.getPlugin("XHRUpload") as { setOptions?: (o: { endpoint: string }) => void } | undefined;
+    plugin?.setOptions?.({ endpoint });
+  }, [uploadSetId, galleryId, uppy]);
+
   function addFiles(list: FileList | File[]) {
     setFailures([]);
     setSummary(null);
@@ -210,6 +230,25 @@ export function UploadPanel({ galleryId }: { galleryId: string }) {
 
   return (
     <div className="flex flex-col gap-3">
+      {sets.length > 0 && (
+        <label className="flex flex-wrap items-center gap-2 text-sm text-text-2">
+          Upload to
+          <select
+            value={uploadSetId}
+            onChange={(e) => setUploadSetId(e.target.value)}
+            disabled={uploading}
+            className="rounded-lg border border-line bg-canvas px-3 py-1.5 text-sm text-text-1 outline-none focus:border-line-strong disabled:opacity-50"
+          >
+            <option value="">Unsorted</option>
+            {sets.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.title}
+              </option>
+            ))}
+          </select>
+          <span className="text-xs text-text-3">— or move photos into a set later from the grid.</span>
+        </label>
+      )}
       <div
         role="button"
         tabIndex={0}

@@ -38,6 +38,18 @@ export async function photoRoutes(app: FastifyInstance) {
       const gallery = await resolveGalleryById(photo.galleryId);
       if (!gallery) return reply.code(404).send({ error: "not_found" });
 
+      // The photo's set (if any) governs client visibility + downloads. Ungrouped
+      // photos (setId null) fall back to the gallery-level allowDownloads.
+      let set: { visibleToClient: boolean; allowDownloads: boolean } | null = null;
+      if (photo.setId) {
+        const [row] = await db
+          .select({ visibleToClient: schema.photoSets.visibleToClient, allowDownloads: schema.photoSets.allowDownloads })
+          .from(schema.photoSets)
+          .where(eq(schema.photoSets.id, photo.setId))
+          .limit(1);
+        set = row ?? null;
+      }
+
       const adminToken = request.cookies[ADMIN_SESSION_COOKIE];
       const isAdmin = Boolean(await verifyAdminSession(adminToken));
       // Non-admins are blocked once the gallery link has expired (admins keep
@@ -45,13 +57,19 @@ export async function photoRoutes(app: FastifyInstance) {
       if (!isAdmin && (isGalleryExpired(gallery) || !(await hasGalleryAccess(request, gallery)))) {
         return reply.code(403).send({ error: "forbidden" });
       }
+      // A photo in a set that isn't client-visible behaves as if it doesn't
+      // exist for non-admins — no thumbnails, no originals, nothing to enumerate.
+      if (!isAdmin && set && !set.visibleToClient) {
+        return reply.code(404).send({ error: "not_found" });
+      }
 
       let filePath: string;
       let contentType: string;
       if (variant === "original") {
-        // Full-res originals for clients are opt-in per gallery — browsing
-        // only ever needs the derived previews. Admins always have access.
-        if (!isAdmin && !gallery.allowDownloads) {
+        // Full-res originals for clients are opt-in — per set when the photo is
+        // in one, else per gallery. Admins always have access.
+        const downloadable = set ? set.visibleToClient && set.allowDownloads : gallery.allowDownloads;
+        if (!isAdmin && !downloadable) {
           return reply.code(403).send({ error: "downloads_disabled" });
         }
         filePath = originalPath(photo.galleryId, photo.id, photo.fileExt);

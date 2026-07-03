@@ -10,6 +10,7 @@ import { UploadPanel } from "./galleries/UploadPanel.tsx";
 import { AdminPhotoGrid } from "./galleries/AdminPhotoGrid.tsx";
 import { LightroomExportPanel } from "./galleries/LightroomExportPanel.tsx";
 import { DownloadButtons } from "./galleries/DownloadButtons.tsx";
+import { SetsPanel } from "./galleries/SetsPanel.tsx";
 
 export function GalleryDetail() {
   const { id = "" } = useParams();
@@ -113,6 +114,12 @@ export function GalleryDetail() {
       <Section title="Upload">
         <ErrorBoundary label="the upload panel">
           <UploadPanel galleryId={id} />
+        </ErrorBoundary>
+      </Section>
+
+      <Section title="Sets">
+        <ErrorBoundary label="the sets panel">
+          <SetsPanel galleryId={id} />
         </ErrorBoundary>
       </Section>
 

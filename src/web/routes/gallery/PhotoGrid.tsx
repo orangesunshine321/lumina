@@ -21,6 +21,7 @@ interface AlbumPhoto extends Photo {
   favorited: boolean;
   thumbhash: string | null;
   baseFilename: string;
+  setId: string | null;
   urls: PhotoDTO["urls"];
 }
 
@@ -48,15 +49,25 @@ function decodeThumbhash(base64: string): string | null {
 export function PhotoGrid({
   slug,
   favoritesOnly,
-  allowDownloads,
+  setId,
+  galleryAllowDownloads,
+  downloadableSetIds,
 }: {
   slug: string;
   favoritesOnly: boolean;
-  allowDownloads: boolean;
+  /** Active set filter (undefined = all sets, "ungrouped" = photos in no set). */
+  setId?: string;
+  galleryAllowDownloads: boolean;
+  downloadableSetIds: Set<string>;
 }) {
   const queryClient = useQueryClient();
-  const queryKey = ["gallery-photos", slug, favoritesOnly ? "favorites" : "all"];
-  const inactiveKey = ["gallery-photos", slug, favoritesOnly ? "all" : "favorites"];
+  // One cache entry per view: favorites, all, or a specific set.
+  const currentView = favoritesOnly ? "favorites" : setId ?? "all";
+  const queryKey = ["gallery-photos", slug, currentView];
+  // Whether a given photo's original is downloadable by the client (per its set,
+  // else the gallery-level toggle for ungrouped photos).
+  const canDownload = (p?: AlbumPhoto) =>
+    !!p && (p.setId ? downloadableSetIds.has(p.setId) : galleryAllowDownloads);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   // The ids that get the first-load entrance animation — captured exactly
@@ -68,6 +79,7 @@ export function PhotoGrid({
     queryFn: ({ pageParam }) => {
       const params = new URLSearchParams({ limit: "180" });
       if (favoritesOnly) params.set("favorites", "1");
+      else if (setId) params.set("setId", setId);
       if (pageParam) params.set("cursor", pageParam);
       return api.get<PhotoListResponse>(`/api/gallery/${slug}/photos?${params.toString()}`);
     },
@@ -87,6 +99,7 @@ export function PhotoGrid({
           favorited: Boolean(photo.favorited),
           thumbhash: photo.thumbhash,
           baseFilename: photo.baseFilename,
+          setId: photo.setId,
           urls: photo.urls,
         })),
       ),
@@ -156,7 +169,15 @@ export function PhotoGrid({
       // is stale now too. When we're IN the favorites view, refetch it so an
       // unfavorited photo actually leaves the grid.
       queryClient.invalidateQueries({ queryKey: ["gallery-meta", slug] });
-      queryClient.invalidateQueries({ queryKey: inactiveKey });
+      // Every OTHER cached view (the "all" view, other set tabs, favorites) also
+      // contains this photo — mark them stale so the heart is consistent when the
+      // client switches tabs. The current view keeps its optimistic patch (it's
+      // excluded here), except in the favorites view where the photo must leave
+      // the grid, so that one is refetched explicitly below.
+      queryClient.invalidateQueries({
+        queryKey: ["gallery-photos", slug],
+        predicate: (q) => q.queryKey[2] !== currentView,
+      });
       if (favoritesOnly) {
         queryClient.invalidateQueries({ queryKey });
       }
@@ -350,7 +371,7 @@ export function PhotoGrid({
                       {photos[lightboxIndex]?.favorited ? "Favorited" : "Favorite"}
                     </span>
                   </button>
-                  {allowDownloads && photos[lightboxIndex] && (
+                  {canDownload(photos[lightboxIndex]) && (
                     <a
                       href={`${photos[lightboxIndex]!.urls.original}?download=1`}
                       download

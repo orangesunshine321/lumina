@@ -76,6 +76,33 @@ export const galleries = sqliteTable(
   (table) => [uniqueIndex("galleries_slug_idx").on(table.slug)],
 );
 
+/** Named groupings of a gallery's photos (e.g. "Raws" vs "Final edits"). Opt-in:
+ * a gallery with no sets behaves exactly as before (all photos ungrouped, i.e.
+ * photos.setId IS NULL, governed by the gallery-level allowDownloads). The two
+ * client-facing toggles are independent: a set can be visible-but-not-downloadable
+ * (proofing) or hidden entirely (admin-only work-in-progress). */
+export const photoSets = sqliteTable(
+  "photo_sets",
+  {
+    id: text("id").primaryKey(),
+    galleryId: text("gallery_id")
+      .notNull()
+      .references(() => galleries.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    sortIndex: integer("sort_index").notNull().default(0), // order of sets within the gallery
+    // Whether the client sees this set's photos at all. Hidden = admin-only.
+    visibleToClient: integer("visible_to_client", { mode: "boolean" }).notNull().default(true),
+    // Whether the client may download this set's originals. Only meaningful when
+    // visible (you can't download what you can't see).
+    allowDownloads: integer("allow_downloads", { mode: "boolean" }).notNull().default(false),
+    createdAt: timestamp("created_at"),
+  },
+  (table) => [
+    index("photo_sets_gallery_id_idx").on(table.galleryId),
+    index("photo_sets_gallery_sort_idx").on(table.galleryId, table.sortIndex),
+  ],
+);
+
 export const photos = sqliteTable(
   "photos",
   {
@@ -83,6 +110,10 @@ export const photos = sqliteTable(
     galleryId: text("gallery_id")
       .notNull()
       .references(() => galleries.id, { onDelete: "cascade" }),
+    // Optional grouping into a set. NULL = ungrouped (the default / legacy state).
+    // SET NULL on delete: removing a set orphans its photos back to ungrouped,
+    // it never deletes them.
+    setId: text("set_id").references(() => photoSets.id, { onDelete: "set null" }),
     originalFilename: text("original_filename").notNull(), // exactly as uploaded, incl. extension
     // Extension stripped, precomputed at ingest: this is exactly what the
     // Lightroom copy-list exports, so there's zero string work at read time.
@@ -107,6 +138,7 @@ export const photos = sqliteTable(
     index("photos_gallery_id_idx").on(table.galleryId),
     index("photos_gallery_status_idx").on(table.galleryId, table.status),
     index("photos_gallery_sort_idx").on(table.galleryId, table.sortIndex),
+    index("photos_set_idx").on(table.setId),
     uniqueIndex("photos_gallery_checksum_idx").on(table.galleryId, table.checksumSha256),
   ],
 );

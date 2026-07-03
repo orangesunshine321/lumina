@@ -13,6 +13,8 @@ export function GalleryApp() {
   const queryClient = useQueryClient();
   const queryKey = ["gallery-meta", slug];
   const [favoritesOnly, setFavoritesOnly] = useState(false);
+  // null = all sets, "ungrouped" = photos in no set, otherwise a set id.
+  const [activeSet, setActiveSet] = useState<string | null>(null);
   const gridStartRef = useRef<HTMLDivElement | null>(null);
 
   const meta = useQuery({
@@ -87,6 +89,12 @@ export function GalleryApp() {
   const scrollToGrid = () =>
     gridStartRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
 
+  const downloadableSetIds = new Set(gallery.sets.filter((s) => s.allowDownloads).map((s) => s.id));
+  // Downloads are available if the gallery-level toggle is on (ungrouped photos)
+  // or at least one set is downloadable.
+  const hasDownloads = gallery.allowDownloads || downloadableSetIds.size > 0;
+  const showSetTabs = gallery.sets.length > 0 && !favoritesOnly && gallery.photoCount > 0;
+
   return (
     <div className="min-h-screen bg-canvas">
       {gallery.coverPhotoId ? (
@@ -131,16 +139,38 @@ export function GalleryApp() {
                 onSubmitted={() => queryClient.invalidateQueries({ queryKey })}
               />
             )}
-            {gallery.allowDownloads && gallery.photoCount > 0 && (
-              <DownloadMenu slug={slug} favoriteCount={gallery.favoriteCount} />
-            )}
+            {hasDownloads && gallery.photoCount > 0 && <DownloadMenu slug={slug} gallery={gallery} />}
             <ThemeToggle />
           </div>
         </div>
+
+        {showSetTabs && (
+          <div className="flex flex-wrap items-center gap-1.5 px-4 pb-2 sm:px-6">
+            <FilterPill active={activeSet === null} onClick={() => setActiveSet(null)}>
+              All
+            </FilterPill>
+            {gallery.sets.map((s) => (
+              <FilterPill key={s.id} active={activeSet === s.id} onClick={() => setActiveSet(s.id)}>
+                {s.title}
+              </FilterPill>
+            ))}
+            {gallery.ungroupedCount > 0 && (
+              <FilterPill active={activeSet === "ungrouped"} onClick={() => setActiveSet("ungrouped")}>
+                Unsorted
+              </FilterPill>
+            )}
+          </div>
+        )}
       </div>
 
       <ErrorBoundary label="this gallery">
-        <PhotoGrid slug={slug} favoritesOnly={favoritesOnly} allowDownloads={gallery.allowDownloads} />
+        <PhotoGrid
+          slug={slug}
+          favoritesOnly={favoritesOnly}
+          setId={favoritesOnly ? undefined : activeSet ?? undefined}
+          galleryAllowDownloads={gallery.allowDownloads}
+          downloadableSetIds={downloadableSetIds}
+        />
       </ErrorBoundary>
     </div>
   );
@@ -378,7 +408,7 @@ function SubmitSelection({
   );
 }
 
-function DownloadMenu({ slug, favoriteCount }: { slug: string; favoriteCount: number }) {
+function DownloadMenu({ slug, gallery }: { slug: string; gallery: GalleryPublicDTO }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -400,10 +430,12 @@ function DownloadMenu({ slug, favoriteCount }: { slug: string; favoriteCount: nu
     };
   }, [open]);
 
-  function download(scope: "all" | "favorites") {
+  function download(query: string) {
     setOpen(false);
-    window.location.href = `/api/gallery/${slug}/download?scope=${scope}`;
+    window.location.href = `/api/gallery/${slug}/download?${query}`;
   }
+
+  const downloadableSets = gallery.sets.filter((s) => s.allowDownloads);
 
   return (
     <div ref={containerRef} className="relative">
@@ -423,26 +455,52 @@ function DownloadMenu({ slug, favoriteCount }: { slug: string; favoriteCount: nu
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-full z-20 mt-1 w-44 overflow-hidden rounded-xl border border-line bg-surface-2 py-1 shadow-lg shadow-black/20"
+          className="absolute right-0 top-full z-20 mt-1 w-52 overflow-hidden rounded-xl border border-line bg-surface-2 py-1 shadow-lg shadow-black/20"
         >
-          <button
-            role="menuitem"
-            onClick={() => download("all")}
-            className="block w-full px-4 py-2 text-left text-sm text-text-1 transition-colors hover:bg-surface-3"
+          <MenuItem onClick={() => download("scope=all")}>
+            {gallery.sets.length > 0 ? "Everything" : "All photos"}
+          </MenuItem>
+          {gallery.allowDownloads && gallery.ungroupedCount > 0 && gallery.sets.length > 0 && (
+            <MenuItem onClick={() => download("scope=set&setId=ungrouped")}>
+              Unsorted ({gallery.ungroupedCount})
+            </MenuItem>
+          )}
+          {downloadableSets.map((s) => (
+            <MenuItem key={s.id} onClick={() => download(`scope=set&setId=${s.id}`)}>
+              {s.title} ({s.photoCount})
+            </MenuItem>
+          ))}
+          <MenuItem
+            disabled={gallery.downloadableFavoriteCount === 0}
+            onClick={() => download("scope=favorites")}
           >
-            All photos
-          </button>
-          <button
-            role="menuitem"
-            disabled={favoriteCount === 0}
-            onClick={() => download("favorites")}
-            className="block w-full px-4 py-2 text-left text-sm text-text-1 transition-colors hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Favorites{favoriteCount > 0 ? ` (${favoriteCount})` : ""}
-          </button>
+            Favorites
+            {gallery.downloadableFavoriteCount > 0 ? ` (${gallery.downloadableFavoriteCount})` : ""}
+          </MenuItem>
         </div>
       )}
     </div>
+  );
+}
+
+function MenuItem({
+  onClick,
+  disabled,
+  children,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      role="menuitem"
+      disabled={disabled}
+      onClick={onClick}
+      className="block w-full truncate px-4 py-2 text-left text-sm text-text-1 transition-colors hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-40"
+    >
+      {children}
+    </button>
   );
 }
 
