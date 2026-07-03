@@ -49,7 +49,11 @@ export function UploadPanel({ galleryId }: { galleryId: string }) {
 
   const [uppy] = useState(() => {
     const instance = new Uppy({
-      restrictions: { allowedFileTypes: [".jpg", ".jpeg", "image/jpeg"] },
+      // No Uppy allowedFileTypes restriction: it was rejecting valid camera
+      // JPEGs (some arrive with an empty browser MIME type, and its
+      // extension/MIME matching is finicky at scale). We filter to JPEGs by
+      // filename in addFiles instead, and the server validates the real file
+      // header on every upload — that's the authoritative check.
       // Uploads start explicitly after the dedup check below, so already-
       // uploaded files are removed before any bytes are sent.
       autoProceed: false,
@@ -68,13 +72,10 @@ export function UploadPanel({ galleryId }: { galleryId: string }) {
       },
     });
 
-    instance.on("restriction-failed", (file) => {
+    instance.on("restriction-failed", (file, error) => {
       setFailures((prev) => [
         ...prev,
-        {
-          name: file?.name ?? "Unknown file",
-          reason: "Not a JPEG — only exported JPEGs can be uploaded.",
-        },
+        { name: file?.name ?? "Unknown file", reason: error?.message ?? "File couldn't be added." },
       ]);
     });
 
@@ -173,12 +174,37 @@ export function UploadPanel({ galleryId }: { galleryId: string }) {
   function addFiles(list: FileList | File[]) {
     setFailures([]);
     setSummary(null);
+    // Filter to JPEGs ourselves by filename (case-insensitive) — reliable for
+    // real camera exports, unlike Uppy's MIME/extension restriction which was
+    // wrongly rejecting valid .jpg files. Non-JPEGs are reported as skipped;
+    // the server re-validates the actual file header on upload.
+    const skipped: string[] = [];
+    const toAdd: Array<{ name: string; type: string; data: File }> = [];
     for (const file of Array.from(list)) {
-      try {
-        uppy.addFile({ name: file.name, type: file.type, data: file });
-      } catch {
-        // Restriction failures surface through the restriction-failed event.
+      const name = file.name ?? "";
+      if (!/\.jpe?g$/i.test(name)) {
+        skipped.push(name || "unnamed file");
+        continue;
       }
+      toAdd.push({ name: file.name, type: file.type || "image/jpeg", data: file });
+    }
+    // One batched add for the whole selection — adding hundreds of files
+    // one-by-one triggers a state update per file and is noticeably slow.
+    if (toAdd.length > 0) {
+      try {
+        uppy.addFiles(toAdd);
+      } catch {
+        // addFiles still adds the valid files even if some are duplicates;
+        // the server's checksum dedup is the authoritative guard regardless.
+      }
+    }
+    if (skipped.length > 0) {
+      setFailures(
+        skipped.map((n) => ({
+          name: n,
+          reason: "Not a JPEG — only exported JPEGs can be uploaded.",
+        })),
+      );
     }
   }
 
