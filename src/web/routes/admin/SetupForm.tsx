@@ -1,13 +1,25 @@
 import { useState, type FormEvent } from "react";
 import { api, ApiError } from "../../lib/api.ts";
+import type { AppSettings, SettingsLimits } from "../../lib/types.ts";
+import { ProcessingSettingsFields } from "./ProcessingSettingsFields.tsx";
 
-export function SetupForm({ onComplete }: { onComplete: () => void }) {
+export function SetupForm({
+  onComplete,
+  settingsDefaults,
+  settingsLimits,
+}: {
+  onComplete: () => void;
+  settingsDefaults: AppSettings;
+  settingsLimits: SettingsLimits;
+}) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [setupToken, setSetupToken] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [settings, setSettings] = useState<AppSettings>(settingsDefaults);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -24,7 +36,15 @@ export function SetupForm({ onComplete }: { onComplete: () => void }) {
 
     setSubmitting(true);
     try {
-      await api.post("/api/setup", { email, password, setupToken: setupToken.trim() });
+      // Only send settings the operator actually changed, so defaults aren't
+      // pinned into the store on a plain setup.
+      const changed = JSON.stringify(settings) !== JSON.stringify(settingsDefaults);
+      await api.post("/api/setup", {
+        email,
+        password,
+        setupToken: setupToken.trim(),
+        ...(changed ? { settings } : {}),
+      });
       onComplete();
     } catch (err) {
       if (err instanceof ApiError && err.message === "invalid_setup_token") {
@@ -91,6 +111,37 @@ export function SetupForm({ onComplete }: { onComplete: () => void }) {
             autoComplete="new-password"
           />
         </Field>
+        <div className="border-t border-line pt-3">
+          <button
+            type="button"
+            onClick={() => setShowAdvanced((v) => !v)}
+            aria-expanded={showAdvanced}
+            className="flex w-full items-center justify-between text-sm font-medium text-text-2 transition-colors hover:text-text-1"
+          >
+            Advanced — processing &amp; uploads
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              className={`h-4 w-4 transition-transform ${showAdvanced ? "rotate-180" : ""}`}
+            >
+              <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          {showAdvanced && (
+            <div className="mt-4">
+              <ProcessingSettingsFields
+                value={settings}
+                limits={settingsLimits}
+                onChange={setSettings}
+              />
+              <p className="mt-3 text-xs text-text-3">
+                Optional — you can change these any time from <b>App settings</b>.
+              </p>
+            </div>
+          )}
+        </div>
         {error && <p className="text-sm text-accent-500">{error}</p>}
         <button type="submit" disabled={submitting} className="auth-button">
           {submitting ? "Creating account…" : "Create account"}

@@ -28,10 +28,8 @@ const SHARP_TIMEOUT_SECONDS = 60;
  * always armed — sharp throws rather than decoding a decompression bomb into
  * memory. The upload route rejects oversized images earlier; this backstops
  * anything already on disk (e.g. a re-processed original). */
-function openImage(path: string) {
-  return sharp(path, { limitInputPixels: config.maxImagePixels }).timeout({
-    seconds: SHARP_TIMEOUT_SECONDS,
-  });
+function openImage(path: string, maxPixels: number) {
+  return sharp(path, { limitInputPixels: maxPixels }).timeout({ seconds: SHARP_TIMEOUT_SECONDS });
 }
 
 export interface ProcessedPhoto {
@@ -41,17 +39,26 @@ export interface ProcessedPhoto {
   capturedAt: Date | null;
 }
 
+export interface ProcessOptions {
+  generateAvif?: boolean;
+  maxImagePixels?: number;
+}
+
 /** Generates the four WebP derivatives, a ThumbHash placeholder, and reads
  * EXIF capture time for one original JPEG. Throws on genuine failure (e.g. a
- * corrupt file) so the caller can mark the job failed and retry. */
+ * corrupt file) so the caller can mark the job failed and retry. AVIF/pixel
+ * behavior comes from live settings (opts); absent, it falls back to config. */
 export async function processPhoto(
   originalPath: string,
   galleryId: string,
   photoId: string,
+  opts: ProcessOptions = {},
 ): Promise<ProcessedPhoto> {
+  const generateAvif = opts.generateAvif ?? config.generateAvif;
+  const maxImagePixels = opts.maxImagePixels ?? config.maxImagePixels;
   await ensurePhotoDerivedDir(galleryId, photoId);
 
-  const meta = await openImage(originalPath).metadata();
+  const meta = await openImage(originalPath, maxImagePixels).metadata();
   const orientation = meta.orientation ?? 1;
   const swapped = orientation >= 5 && orientation <= 8;
   // null (not 0) when sharp can't report a dimension: the frontend's
@@ -66,7 +73,7 @@ export async function processPhoto(
       // A single decode+resize pipeline, cloned per output format so the
       // source is read once. .rotate() auto-orients from EXIF then strips the
       // tag; withoutEnlargement keeps tiny originals from being upscaled.
-      const resized = openImage(originalPath)
+      const resized = openImage(originalPath, maxImagePixels)
         .rotate()
         .resize({ width: size, height: size, fit: "inside", withoutEnlargement: true });
 
@@ -75,7 +82,7 @@ export async function processPhoto(
         .webp({ quality })
         .toFile(derivedPath(galleryId, photoId, variant, "webp"));
 
-      if (config.generateAvif && AVIF_VARIANTS.has(variant)) {
+      if (generateAvif && AVIF_VARIANTS.has(variant)) {
         // AVIF is a best-effort optimization: the serve route falls back to
         // WebP whenever the .avif file is absent (see routes/photos.ts), so a
         // failed AVIF encode must NOT fail the whole photo — otherwise a valid
@@ -101,14 +108,14 @@ export async function processPhoto(
     }),
   );
 
-  const thumbhash = await computeThumbHash(originalPath);
+  const thumbhash = await computeThumbHash(originalPath, maxImagePixels);
   const capturedAt = await readCapturedAt(originalPath);
 
   return { width, height, thumbhash, capturedAt };
 }
 
-async function computeThumbHash(originalPath: string): Promise<string> {
-  const { data, info } = await openImage(originalPath)
+async function computeThumbHash(originalPath: string, maxPixels: number): Promise<string> {
+  const { data, info } = await openImage(originalPath, maxPixels)
     .rotate()
     .resize({ width: 100, height: 100, fit: "inside", withoutEnlargement: true })
     .raw()

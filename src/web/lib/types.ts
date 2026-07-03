@@ -91,6 +91,26 @@ export interface LightroomListResponse {
   text: string;
 }
 
+/** Operator-tunable app settings, editable from the admin panel and the setup
+ * screen (mirrors src/server/services/settings.ts). */
+export interface AppSettings {
+  generateAvif: boolean;
+  uploadConcurrency: number;
+  maxUploadFileSizeBytes: number;
+  maxImagePixels: number;
+}
+
+export interface SettingsLimits {
+  uploadConcurrency: { min: number; max: number };
+  maxUploadFileSizeBytes: { min: number; max: number };
+  maxImagePixels: { min: number; max: number };
+}
+
+export interface SettingsResponse {
+  settings: AppSettings;
+  limits: SettingsLimits;
+}
+
 /** Builds the photo-byte-serving URL for a given variant. Always use this
  * instead of constructing the path inline, so every consumer stays in sync
  * with the server route in src/server/routes/photos.ts. */

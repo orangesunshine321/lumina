@@ -31,7 +31,10 @@ describe("first-run setup", () => {
   it("reports needsSetup until an admin exists", async () => {
     const res = await app.inject({ method: "GET", url: "/api/setup/status" });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ needsSetup: true });
+    expect(res.json().needsSetup).toBe(true);
+    // Status also exposes current defaults + limits for the setup screen.
+    expect(res.json().settings.generateAvif).toBeTypeOf("boolean");
+    expect(res.json().limits.uploadConcurrency.max).toBeGreaterThan(0);
   });
 
   it("rejects setup without the correct setup code", async () => {
@@ -68,7 +71,7 @@ describe("first-run setup", () => {
 
   it("permanently disables itself once an admin exists", async () => {
     const status = await app.inject({ method: "GET", url: "/api/setup/status" });
-    expect(status.json()).toEqual({ needsSetup: false });
+    expect(status.json().needsSetup).toBe(false);
 
     const res = await app.inject({
       method: "POST",

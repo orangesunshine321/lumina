@@ -149,3 +149,12 @@ export const authAttempts = sqliteTable(
     index("auth_attempts_scope_gallery_idx").on(table.scope, table.galleryId, table.createdAt),
   ],
 );
+
+/** Operator-tunable app settings, editable from the admin panel. A tiny
+ * key→value store (values are JSON-encoded); anything absent falls back to its
+ * env/config default, so an empty table behaves exactly like today. */
+export const appSettings = sqliteTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(), // JSON-encoded
+  updatedAt: timestamp("updated_at"),
+});

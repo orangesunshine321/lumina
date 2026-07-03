@@ -5,6 +5,7 @@ import { db, schema } from "../db/client.ts";
 import { config } from "../config.ts";
 import { originalPath, photoDerivedDir } from "../lib/storage.ts";
 import { processPhoto } from "./imagePipeline.ts";
+import { getSettings, type AppSettings } from "./settings.ts";
 
 export interface PhotoProgressEvent {
   galleryId: string;
@@ -51,7 +52,9 @@ export function startWorker(): void {
   if (started) return;
   started = true;
 
-  console.log(`[worker] starting (concurrency=${config.uploadConcurrency}, avif=${config.generateAvif})`);
+  void getSettings().then((s) =>
+    console.log(`[worker] starting (concurrency=${s.uploadConcurrency}, avif=${s.generateAvif})`),
+  );
   reclaimStuckJobs()
     .catch((err) => console.error("[worker] failed to reclaim stuck jobs", err))
     .finally(() => {
@@ -90,12 +93,15 @@ async function loop(): Promise<void> {
 }
 
 async function runBatch(): Promise<boolean> {
+  // Read live settings each batch so a concurrency/AVIF change from the admin
+  // panel takes effect without a restart (getSettings is cached, so cheap).
+  const settings = await getSettings();
   const pending = await db
     .select()
     .from(schema.photos)
     .where(eq(schema.photos.status, "pending"))
     .orderBy(asc(schema.photos.createdAt))
-    .limit(config.uploadConcurrency);
+    .limit(settings.uploadConcurrency);
 
   if (pending.length === 0) return false;
 
@@ -125,15 +131,24 @@ async function runBatch(): Promise<boolean> {
     } satisfies PhotoProgressEvent);
   }
 
-  await Promise.all(pending.map((photo) => processOne(photo)));
+  await Promise.all(pending.map((photo) => processOne(photo, settings)));
   return true;
 }
 
-async function processOne(photo: typeof schema.photos.$inferSelect): Promise<void> {
+async function processOne(
+  photo: typeof schema.photos.$inferSelect,
+  settings: AppSettings,
+): Promise<void> {
   const startedAt = Date.now();
   try {
     const path = originalPath(photo.galleryId, photo.id, photo.fileExt);
-    const result = await withTimeout(processPhoto(path, photo.galleryId, photo.id), PROCESS_TIMEOUT_MS);
+    const result = await withTimeout(
+      processPhoto(path, photo.galleryId, photo.id, {
+        generateAvif: settings.generateAvif,
+        maxImagePixels: settings.maxImagePixels,
+      }),
+      PROCESS_TIMEOUT_MS,
+    );
 
     const [updatedRow] = await db
       .update(schema.photos)

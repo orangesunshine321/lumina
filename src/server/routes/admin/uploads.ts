@@ -12,6 +12,7 @@ import { generateId } from "../../lib/ids.ts";
 import { ensureGalleryDirs, originalPath } from "../../lib/storage.ts";
 import { requireAdmin } from "../../middleware/requireAdmin.ts";
 import { progressBus, type PhotoProgressEvent } from "../../services/worker.ts";
+import { getSettings } from "../../services/settings.ts";
 
 function toPhotoDTO(photo: typeof schema.photos.$inferSelect, favorited = false) {
   return {
@@ -129,6 +130,15 @@ export async function uploadRoutes(app: FastifyInstance) {
         return reply.code(413).send({ error: "file_too_large" });
       }
 
+      // Enforce the operator's (live-tunable) max upload size. The multipart
+      // plugin's own limit is a fixed hard ceiling above this, so a smaller
+      // admin-configured limit is enforced here.
+      const settings = await getSettings();
+      if (byteSize > settings.maxUploadFileSizeBytes) {
+        await rm(tmpPath, { force: true });
+        return reply.code(413).send({ error: "file_too_large" });
+      }
+
       // metadata() only reads the header, so it's cheap at any declared size —
       // no limitInputPixels here, or it would throw before the explicit pixel
       // check below can return the clean "image_too_large" error. The pipeline
@@ -142,10 +152,10 @@ export async function uploadRoutes(app: FastifyInstance) {
       // Decompression-bomb guard: a small file can declare enormous pixel
       // dimensions that blow up memory when sharp decodes it. Reject anything
       // whose pixel count exceeds the cap before any full decode happens.
-      // (config.maxImagePixels also arms sharp's own limitInputPixels in the
-      // pipeline, so this is defense in depth, not the only check.)
+      // (maxImagePixels also arms sharp's own limitInputPixels in the pipeline,
+      // so this is defense in depth, not the only check.)
       const pixels = (meta.width ?? 0) * (meta.height ?? 0);
-      if (pixels === 0 || pixels > config.maxImagePixels) {
+      if (pixels === 0 || pixels > settings.maxImagePixels) {
         await rm(tmpPath, { force: true });
         return reply.code(400).send({ error: "image_too_large" });
       }

@@ -5,8 +5,16 @@ import { generateId } from "../lib/ids.ts";
 import { ADMIN_SESSION_COOKIE, createAdminSession, hashPassword } from "../services/auth.ts";
 import { clearSetupToken, verifySetupToken } from "../services/setupToken.ts";
 import { checkRateLimit, recordAttempt } from "../services/rateLimiter.ts";
+import { getSettings, updateSettings, SETTINGS_LIMITS } from "../services/settings.ts";
 import { getClientIp } from "../lib/http.ts";
 import { config } from "../config.ts";
+
+interface SetupSettings {
+  generateAvif?: boolean;
+  uploadConcurrency?: number;
+  maxUploadFileSizeBytes?: number;
+  maxImagePixels?: number;
+}
 
 /**
  * First-run admin creation. No credentials ever live in `.env`/compose — this
@@ -17,10 +25,12 @@ import { config } from "../config.ts";
 export async function setupRoutes(app: FastifyInstance) {
   app.get("/api/setup/status", async () => {
     const needsSetup = !(await adminExists());
-    return { needsSetup };
+    // Include current defaults + limits so the setup screen can offer optional
+    // first-run tuning without a second request (these aren't sensitive).
+    return { needsSetup, settings: await getSettings(), limits: SETTINGS_LIMITS };
   });
 
-  app.post<{ Body: { email: string; password: string; setupToken: string } }>(
+  app.post<{ Body: { email: string; password: string; setupToken: string; settings?: SetupSettings } }>(
     "/api/setup",
     {
       schema: {
@@ -31,6 +41,18 @@ export async function setupRoutes(app: FastifyInstance) {
             email: { type: "string", format: "email", maxLength: 255 },
             password: { type: "string", minLength: 12, maxLength: 512 },
             setupToken: { type: "string", maxLength: 128 },
+            // Optional first-run tuning — saved to the same store the settings
+            // panel edits, so the operator can configure processing up front.
+            settings: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                generateAvif: { type: "boolean" },
+                uploadConcurrency: { type: "integer" },
+                maxUploadFileSizeBytes: { type: "integer" },
+                maxImagePixels: { type: "integer" },
+              },
+            },
           },
         },
       },
@@ -75,6 +97,11 @@ export async function setupRoutes(app: FastifyInstance) {
 
       clearSetupToken();
       await recordAttempt({ scope: "admin_login", ip, success: true });
+
+      // Persist any first-run tuning the operator chose (values are clamped).
+      if (request.body.settings) {
+        await updateSettings(request.body.settings);
+      }
 
       const { rawToken, expiresAt } = await createAdminSession(id, request.headers["user-agent"]);
       reply.setCookie(ADMIN_SESSION_COOKIE, rawToken, {

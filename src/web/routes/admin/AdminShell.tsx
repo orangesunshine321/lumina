@@ -5,6 +5,7 @@ import { api } from "../../lib/api.ts";
 import { getTheme, toggleTheme, type Theme } from "../../lib/theme.ts";
 import type { SystemStatsDTO } from "../../lib/types.ts";
 import { AccountDialog } from "./AccountDialog.tsx";
+import { SettingsDialog } from "./SettingsDialog.tsx";
 
 interface BackupStatus {
   lastBackupAt: string | null;
@@ -19,6 +20,7 @@ export function AdminShell({
   children: ReactNode;
 }) {
   const [accountOpen, setAccountOpen] = useState(false);
+  const [appSettingsOpen, setAppSettingsOpen] = useState(false);
 
   const backupStatus = useQuery({
     queryKey: ["backup-status"],
@@ -47,7 +49,11 @@ export function AdminShell({
           </Link>
           <div className="flex items-center gap-1">
             <ThemeToggle />
-            <AccountMenu email={admin.email} onOpenSettings={() => setAccountOpen(true)} />
+            <AccountMenu
+              email={admin.email}
+              onOpenSettings={() => setAccountOpen(true)}
+              onOpenAppSettings={() => setAppSettingsOpen(true)}
+            />
           </div>
         </div>
       </header>
@@ -70,6 +76,7 @@ export function AdminShell({
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">{children}</main>
 
       {accountOpen && <AccountDialog email={admin.email} onClose={() => setAccountOpen(false)} />}
+      {appSettingsOpen && <SettingsDialog onClose={() => setAppSettingsOpen(false)} />}
     </div>
   );
 }
@@ -124,7 +131,15 @@ function ThemeToggle() {
   );
 }
 
-function AccountMenu({ email, onOpenSettings }: { email: string; onOpenSettings: () => void }) {
+function AccountMenu({
+  email,
+  onOpenSettings,
+  onOpenAppSettings,
+}: {
+  email: string;
+  onOpenSettings: () => void;
+  onOpenAppSettings: () => void;
+}) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -192,6 +207,14 @@ function AccountMenu({ email, onOpenSettings }: { email: string; onOpenSettings:
             }}
           >
             Account settings
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              setOpen(false);
+              onOpenAppSettings();
+            }}
+          >
+            App settings
           </MenuItem>
           <MenuItem
             onClick={() => {

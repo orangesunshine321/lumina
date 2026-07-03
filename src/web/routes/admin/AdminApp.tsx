@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Route, Routes } from "react-router-dom";
 import { api, ApiError } from "../../lib/api.ts";
+import type { AppSettings, SettingsLimits } from "../../lib/types.ts";
 import { SetupForm } from "./SetupForm.tsx";
 import { LoginForm } from "./LoginForm.tsx";
 import { AdminShell } from "./AdminShell.tsx";
@@ -22,7 +23,10 @@ export function AdminApp() {
 
   const setupStatus = useQuery({
     queryKey: ["setup-status"],
-    queryFn: () => api.get<{ needsSetup: boolean }>("/api/setup/status"),
+    queryFn: () =>
+      api.get<{ needsSetup: boolean; settings: AppSettings; limits: SettingsLimits }>(
+        "/api/setup/status",
+      ),
   });
 
   const me = useQuery({
@@ -37,6 +41,8 @@ export function AdminApp() {
   if (setupStatus.data?.needsSetup) {
     return (
       <SetupForm
+        settingsDefaults={setupStatus.data.settings}
+        settingsLimits={setupStatus.data.limits}
         onComplete={() => {
           queryClient.invalidateQueries({ queryKey: ["setup-status"] });
           queryClient.invalidateQueries({ queryKey: ["admin-me"] });

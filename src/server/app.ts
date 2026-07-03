@@ -17,6 +17,8 @@ import { publicGalleryRoutes } from "./routes/gallery/public.ts";
 import { systemRoutes } from "./routes/admin/system.ts";
 import { photoManageRoutes } from "./routes/admin/photosManage.ts";
 import { accountRoutes } from "./routes/admin/account.ts";
+import { settingsRoutes } from "./routes/admin/settings.ts";
+import { MAX_UPLOAD_FILE_SIZE_BYTES } from "./services/settings.ts";
 
 const WEB_DIST = resolve(process.cwd(), "dist/web");
 
@@ -39,7 +41,9 @@ export async function buildApp() {
 
   await app.register(fastifyCookie);
   await app.register(fastifyMultipart, {
-    limits: { fileSize: config.maxUploadFileSizeBytes, files: 1 },
+    // Fixed hard ceiling — the operator's live-tunable per-file limit is
+    // enforced in the upload handler beneath this (routes/admin/uploads.ts).
+    limits: { fileSize: MAX_UPLOAD_FILE_SIZE_BYTES, files: 1 },
   });
   // Compresses text responses (the SPA bundle, JSON). Images/zips are already
   // compressed formats and are skipped by content-type.
@@ -105,6 +109,7 @@ export async function buildApp() {
   await app.register(systemRoutes);
   await app.register(photoManageRoutes);
   await app.register(accountRoutes);
+  await app.register(settingsRoutes);
 
   if (config.isProduction && existsSync(WEB_DIST)) {
     await app.register(fastifyStatic, {
