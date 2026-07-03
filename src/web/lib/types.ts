@@ -98,6 +98,9 @@ export interface AppSettings {
   uploadConcurrency: number;
   maxUploadFileSizeBytes: number;
   maxImagePixels: number;
+  /** Canonical public origin for shareable links (e.g. https://gallery.example.com);
+   * "" means fall back to the browser's current origin. */
+  publicBaseUrl: string;
 }
 
 export interface SettingsLimits {
@@ -109,6 +112,62 @@ export interface SettingsLimits {
 export interface SettingsResponse {
   settings: AppSettings;
   limits: SettingsLimits;
+}
+
+// --- Public-access wizard (networking / custom domain) ---------------------
+
+export interface ProxyDiagnostics {
+  publicBaseUrl: string;
+  observedHost: string | null;
+  observedProto: string | null;
+  forwardedFor: string | null;
+  cfConnectingIp: string | null;
+  cfRay: string | null;
+  via: string | null;
+  behindProxy: boolean;
+  behindCloudflare: boolean;
+  httpsUpstream: boolean;
+  trustProxy: boolean;
+  secureCookies: boolean;
+  clientIp: string;
+}
+
+export interface NetworkStatusResponse {
+  diagnostics: ProxyDiagnostics;
+}
+
+export interface SelfTestResult {
+  ok: boolean;
+  url: string;
+  reachable: boolean;
+  status: number | null;
+  https: boolean;
+  matchedThisInstance: boolean;
+  error: string | null;
+  durationMs: number;
+}
+
+export interface CloudflareZone {
+  id: string;
+  name: string;
+  accountId: string;
+  accountName: string;
+}
+
+export interface CloudflareVerifyResponse {
+  accounts: { id: string; name: string }[];
+  zones: CloudflareZone[];
+}
+
+export interface CloudflareProvisionResult {
+  hostname: string;
+  zoneName: string;
+  tunnelId: string;
+  tunnelName: string;
+  tunnelToken: string;
+  publicBaseUrl: string;
+  envLine: string;
+  command: string;
 }
 
 /** Builds the photo-byte-serving URL for a given variant. Always use this

@@ -18,6 +18,8 @@ import { systemRoutes } from "./routes/admin/system.ts";
 import { photoManageRoutes } from "./routes/admin/photosManage.ts";
 import { accountRoutes } from "./routes/admin/account.ts";
 import { settingsRoutes } from "./routes/admin/settings.ts";
+import { networkRoutes } from "./routes/admin/network.ts";
+import { publicNetworkRoutes } from "./routes/network.ts";
 import { MAX_UPLOAD_FILE_SIZE_BYTES } from "./services/settings.ts";
 
 const WEB_DIST = resolve(process.cwd(), "dist/web");
@@ -110,6 +112,8 @@ export async function buildApp() {
   await app.register(photoManageRoutes);
   await app.register(accountRoutes);
   await app.register(settingsRoutes);
+  await app.register(networkRoutes);
+  await app.register(publicNetworkRoutes);
 
   if (config.isProduction && existsSync(WEB_DIST)) {
     await app.register(fastifyStatic, {

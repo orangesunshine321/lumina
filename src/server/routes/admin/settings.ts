@@ -7,6 +7,7 @@ interface SettingsBody {
   uploadConcurrency?: number;
   maxUploadFileSizeBytes?: number;
   maxImagePixels?: number;
+  publicBaseUrl?: string;
 }
 
 export async function settingsRoutes(app: FastifyInstance) {
@@ -27,6 +28,7 @@ export async function settingsRoutes(app: FastifyInstance) {
             uploadConcurrency: { type: "integer" },
             maxUploadFileSizeBytes: { type: "integer" },
             maxImagePixels: { type: "integer" },
+            publicBaseUrl: { type: "string", maxLength: 2048 },
           },
         },
       },

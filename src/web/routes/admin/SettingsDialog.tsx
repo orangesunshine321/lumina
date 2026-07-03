@@ -30,7 +30,14 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     setError(null);
     setSaved(false);
     try {
-      const res = await api.patch<SettingsResponse>("/api/admin/settings", value);
+      // Only send the processing knobs this dialog owns — publicBaseUrl is
+      // managed by the Public access dialog and must not be round-tripped here.
+      const res = await api.patch<SettingsResponse>("/api/admin/settings", {
+        generateAvif: value.generateAvif,
+        uploadConcurrency: value.uploadConcurrency,
+        maxUploadFileSizeBytes: value.maxUploadFileSizeBytes,
+        maxImagePixels: value.maxImagePixels,
+      });
       setDraft(res.settings);
       setSaved(true);
       setTimeout(() => setSaved(false), 1600);

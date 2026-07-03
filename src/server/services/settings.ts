@@ -17,6 +17,10 @@ export interface AppSettings {
   uploadConcurrency: number;
   maxUploadFileSizeBytes: number;
   maxImagePixels: number;
+  /** Canonical public origin for shareable links, e.g. "https://gallery.example.com".
+   * Empty string means "no custom domain set" — links fall back to the browser's
+   * current origin. Always stored normalized to a bare origin (no trailing slash). */
+  publicBaseUrl: string;
 }
 
 // Hard ceilings the admin UI can't exceed. The upload ceiling is also the
@@ -29,9 +33,11 @@ export const MAX_IMAGE_PIXELS = 500_000_000; // 500 MP
 export const MIN_CONCURRENCY = 1;
 export const MAX_CONCURRENCY = 16;
 
+type SettingValue = string | number | boolean;
+
 interface Definition {
-  default: () => number | boolean;
-  parse: (value: unknown) => number | boolean;
+  default: () => SettingValue;
+  parse: (value: unknown) => SettingValue;
 }
 
 const DEFINITIONS: Record<keyof AppSettings, Definition> = {
@@ -50,6 +56,10 @@ const DEFINITIONS: Record<keyof AppSettings, Definition> = {
   maxImagePixels: {
     default: () => config.maxImagePixels,
     parse: (v) => clampInt(v, MIN_IMAGE_PIXELS, MAX_IMAGE_PIXELS),
+  },
+  publicBaseUrl: {
+    default: () => normalizeBaseUrl(config.publicBaseUrl),
+    parse: (v) => normalizeBaseUrl(v),
   },
 };
 
@@ -112,4 +122,30 @@ function clampInt(value: unknown, min: number, max: number): number {
   const n = Math.round(Number(value));
   if (!Number.isFinite(n)) return min;
   return Math.max(min, Math.min(max, n));
+}
+
+/** Current custom public origin, or "" if none is set. Convenience accessor for
+ * server-side link builders (e.g. the selection webhook). */
+export async function getPublicBaseUrl(): Promise<string> {
+  return (await getSettings()).publicBaseUrl;
+}
+
+/** Normalize an operator-entered public base URL to a bare origin (scheme + host
+ * + optional port, no trailing slash or path). A bare host like
+ * "gallery.example.com" is assumed https. Anything empty, malformed, or not
+ * http(s) becomes "" — the signal to fall back to the request/browser origin. */
+export function normalizeBaseUrl(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  let url: URL;
+  try {
+    url = new URL(candidate);
+  } catch {
+    return "";
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return "";
+  if (!url.hostname || !url.hostname.includes(".")) return "";
+  return url.origin;
 }

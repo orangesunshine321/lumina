@@ -290,6 +290,7 @@ export async function publicGalleryRoutes(app: FastifyInstance) {
       // Fire-and-forget — the client's response doesn't wait on the webhook.
       void notifySelectionSubmitted({
         galleryTitle: gallery.title,
+        gallerySlug: gallery.slug,
         favoriteCount,
         note,
       });

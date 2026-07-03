@@ -4,6 +4,14 @@ Lumina only ever speaks plain HTTP on one local port. To share galleries beyond
 your own machine, put one of these in front of it. All three give you HTTPS
 without touching certificates yourself.
 
+> **Easier: use the in-app wizard.** Sign in, open the account menu → **Public
+> access & domain**. It sets your public URL, runs a connectivity self-test,
+> shows your current proxy/TLS status, and generates the exact config/commands
+> for each option below — pre-filled with your domain. For Cloudflare it can go
+> further and create the tunnel + DNS for you from an API token (used once,
+> never stored), then hand you the one command to run. The steps below are the
+> manual equivalent, and are what the wizard produces.
+
 ## Option A — Cloudflare Tunnel (recommended)
 
 No port forwarding, no public IP needed, free, and works identically on a home

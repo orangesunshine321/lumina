@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api.ts";
-import type { GalleryDTO } from "../../lib/types.ts";
+import type { GalleryDTO, SettingsResponse } from "../../lib/types.ts";
+import { copyText } from "../../lib/clipboard.ts";
 import { ErrorBoundary } from "../../components/ErrorBoundary.tsx";
 import { GallerySettingsPanel } from "./galleries/GallerySettingsPanel.tsx";
 import { UploadPanel } from "./galleries/UploadPanel.tsx";
@@ -149,12 +150,24 @@ export function GalleryDetail() {
  * prominent and one click away, rather than buried in settings. */
 function ShareBar({ slug }: { slug: string }) {
   const [copied, setCopied] = useState(false);
-  const shareLink = `${window.location.origin}/g/${slug}`;
+  // Prefer the operator's configured public domain (Public access & domain), so
+  // the link is shareable even when the admin is browsing on localhost/a tunnel
+  // address. Cached under the same key the settings dialogs use.
+  const settings = useQuery({
+    queryKey: ["admin-settings"],
+    queryFn: () => api.get<SettingsResponse>("/api/admin/settings"),
+    staleTime: 5 * 60_000,
+  });
+  const base = settings.data?.settings.publicBaseUrl || window.location.origin;
+  const shareLink = `${base}/g/${slug}`;
 
   async function handleCopy() {
-    await navigator.clipboard.writeText(shareLink);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    // Works over plain HTTP too (e.g. a LAN address before HTTPS is set up),
+    // where navigator.clipboard is unavailable.
+    if (await copyText(shareLink)) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }
   }
 
   return (

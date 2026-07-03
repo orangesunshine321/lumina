@@ -6,6 +6,7 @@ import { getTheme, toggleTheme, type Theme } from "../../lib/theme.ts";
 import type { SystemStatsDTO } from "../../lib/types.ts";
 import { AccountDialog } from "./AccountDialog.tsx";
 import { SettingsDialog } from "./SettingsDialog.tsx";
+import { PublicAccessDialog } from "./PublicAccessDialog.tsx";
 
 interface BackupStatus {
   lastBackupAt: string | null;
@@ -21,6 +22,7 @@ export function AdminShell({
 }) {
   const [accountOpen, setAccountOpen] = useState(false);
   const [appSettingsOpen, setAppSettingsOpen] = useState(false);
+  const [publicAccessOpen, setPublicAccessOpen] = useState(false);
 
   const backupStatus = useQuery({
     queryKey: ["backup-status"],
@@ -53,6 +55,7 @@ export function AdminShell({
               email={admin.email}
               onOpenSettings={() => setAccountOpen(true)}
               onOpenAppSettings={() => setAppSettingsOpen(true)}
+              onOpenPublicAccess={() => setPublicAccessOpen(true)}
             />
           </div>
         </div>
@@ -77,6 +80,7 @@ export function AdminShell({
 
       {accountOpen && <AccountDialog email={admin.email} onClose={() => setAccountOpen(false)} />}
       {appSettingsOpen && <SettingsDialog onClose={() => setAppSettingsOpen(false)} />}
+      {publicAccessOpen && <PublicAccessDialog onClose={() => setPublicAccessOpen(false)} />}
     </div>
   );
 }
@@ -135,10 +139,12 @@ function AccountMenu({
   email,
   onOpenSettings,
   onOpenAppSettings,
+  onOpenPublicAccess,
 }: {
   email: string;
   onOpenSettings: () => void;
   onOpenAppSettings: () => void;
+  onOpenPublicAccess: () => void;
 }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -215,6 +221,14 @@ function AccountMenu({
             }}
           >
             App settings
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              setOpen(false);
+              onOpenPublicAccess();
+            }}
+          >
+            Public access &amp; domain
           </MenuItem>
           <MenuItem
             onClick={() => {

@@ -76,6 +76,10 @@
   --color-ink-50: #fafafa;
   --color-accent-500: #e0475c;
   --color-accent-400: #ea6478;
+  /* Positive/success signal (e.g. a passing connectivity test). Muted to sit
+     alongside the single red accent without shouting. */
+  --color-positive-500: #2fa46a;
+  --color-positive-400: #46b881;
 }
 
 @layer base {

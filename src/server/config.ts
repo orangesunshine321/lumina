@@ -33,6 +33,13 @@ export const config = {
   // data), served to supporting browsers via Accept negotiation. Costs extra
   // background encode time; set GENERATE_AVIF=false on slow hardware to skip.
   generateAvif: process.env.GENERATE_AVIF !== "false",
+
+  // Optional canonical public origin (e.g. https://gallery.example.com) used to
+  // build shareable/absolute links — the client-copyable share link and the
+  // selection webhook. Empty = fall back to the browser's current origin (share
+  // link) or omit the link (webhook). This env var is only the default; it's
+  // operator-editable live via the app_settings store (see services/settings.ts).
+  publicBaseUrl: (process.env.PUBLIC_BASE_URL ?? "").trim(),
 };
 
 /** The signing key for gallery-access cookies. Zero-config by default: if the

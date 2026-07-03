@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db, schema } from "../db/client.ts";
+import { getPublicBaseUrl } from "./settings.ts";
 
 /**
  * Fire-and-forget outgoing notification when a client submits their selection.
@@ -9,6 +10,7 @@ import { db, schema } from "../db/client.ts";
  */
 export async function notifySelectionSubmitted(params: {
   galleryTitle: string;
+  gallerySlug: string;
   favoriteCount: number;
   note: string | null;
 }): Promise<void> {
@@ -22,6 +24,11 @@ export async function notifySelectionSubmitted(params: {
   const picks = `${params.favoriteCount} ${params.favoriteCount === 1 ? "favorite" : "favorites"}`;
   let message = `“${params.galleryTitle}” — your client submitted their selection (${picks}).`;
   if (params.note) message += `\nNote: ${params.note}`;
+  // Only build an absolute click-through link when a custom domain is set — the
+  // server has no other way to know its own public origin, and a relative path
+  // is useless inside a Discord/Slack message.
+  const base = await getPublicBaseUrl();
+  if (base) message += `\n${base}/g/${params.gallerySlug}`;
 
   try {
     const controller = new AbortController();

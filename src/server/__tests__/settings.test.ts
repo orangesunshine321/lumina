@@ -23,7 +23,7 @@ function get() {
   });
 }
 
-function patch(payload: unknown) {
+function patch(payload: Record<string, unknown>) {
   return app.inject({
     method: "PATCH",
     url: "/api/admin/settings",
@@ -68,5 +68,22 @@ describe("app settings", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().settings.uploadConcurrency).toBe(6);
     expect(res.json().settings).not.toHaveProperty("notARealSetting");
+  });
+
+  it("normalizes and persists a custom public base URL", async () => {
+    // Defaults to empty (no custom domain).
+    const before = await get();
+    expect(before.json().settings.publicBaseUrl).toBe("");
+
+    // A bare host is upgraded to https and trailing path/slash is dropped.
+    const bare = await patch({ publicBaseUrl: "gallery.example.com" });
+    expect(bare.json().settings.publicBaseUrl).toBe("https://gallery.example.com");
+
+    const withPath = await patch({ publicBaseUrl: "https://foo.example.com/g/x/" });
+    expect(withPath.json().settings.publicBaseUrl).toBe("https://foo.example.com");
+
+    // Garbage (and non-http schemes) normalize back to empty.
+    const junk = await patch({ publicBaseUrl: "not a url" });
+    expect(junk.json().settings.publicBaseUrl).toBe("");
   });
 });
