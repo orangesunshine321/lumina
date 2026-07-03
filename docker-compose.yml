@@ -40,10 +40,10 @@ services:
     # Fork-bomb / thread-exhaustion backstop. Node + libvips' thread pool stay
     # well under this.
     pids_limit: 512
-    # Bounds a runaway so it can't take the whole host down. Generous for the
-    # default 4-way image processing; on a small box, lower UPLOAD_CONCURRENCY
-    # rather than this. Comment out to use all host memory.
-    mem_limit: 2g
+    # Bounds a runaway so it can't take the whole host down. On a powerful box,
+    # raise it (LUMINA_MEM_LIMIT=8g in .env) and bump UPLOAD_CONCURRENCY to use
+    # more cores; on a small box, lower UPLOAD_CONCURRENCY rather than this.
+    mem_limit: ${LUMINA_MEM_LIMIT:-2g}
     ports:
       # Loopback-only: your reverse proxy (Caddy/Nginx/Cloudflare Tunnel) is
       # the sole public entry point and terminates TLS. If your reverse proxy

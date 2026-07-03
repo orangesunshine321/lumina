@@ -12,12 +12,26 @@ const DERIVATIVE_SPECS: Record<DerivedVariant, { size: number; quality: number }
   preview2x: { size: 2400, quality: 85 },
 };
 
+// AVIF is generated only for the grid thumbnails. They load in bulk (so AVIF's
+// smaller bytes matter most there) and are cheap+fast to encode. The large
+// preview AVIFs were the opposite: slow, and memory-hungry enough that four
+// concurrent photos could exhaust a modest container and stall the whole queue.
+// The lightbox serves previews as WebP (few images, one at a time) via the
+// serve route's per-variant format fallback, so nothing breaks.
+const AVIF_VARIANTS = new Set<DerivedVariant>(["thumb", "thumb2x"]);
+
+// Belt-and-braces cap so a single pathological image can't wedge a libvips
+// operation forever (the worker also enforces a per-photo wall-clock timeout).
+const SHARP_TIMEOUT_SECONDS = 60;
+
 /** Every sharp() in the pipeline goes through here so `limitInputPixels` is
  * always armed — sharp throws rather than decoding a decompression bomb into
  * memory. The upload route rejects oversized images earlier; this backstops
  * anything already on disk (e.g. a re-processed original). */
 function openImage(path: string) {
-  return sharp(path, { limitInputPixels: config.maxImagePixels });
+  return sharp(path, { limitInputPixels: config.maxImagePixels }).timeout({
+    seconds: SHARP_TIMEOUT_SECONDS,
+  });
 }
 
 export interface ProcessedPhoto {
@@ -61,7 +75,7 @@ export async function processPhoto(
         .webp({ quality })
         .toFile(derivedPath(galleryId, photoId, variant, "webp"));
 
-      if (config.generateAvif) {
+      if (config.generateAvif && AVIF_VARIANTS.has(variant)) {
         // AVIF is a best-effort optimization: the serve route falls back to
         // WebP whenever the .avif file is absent (see routes/photos.ts), so a
         // failed AVIF encode must NOT fail the whole photo — otherwise a valid
@@ -69,11 +83,11 @@ export async function processPhoto(
         // hidden forever. The AVIF encoder (libheif/aom) is materially more
         // fragile than WebP (tiny/odd derivative dimensions, higher memory), so
         // swallow its errors and leave the photo served as WebP.
-        // effort 4 balances encode speed against size; AVIF quality maps a bit
-        // lower than WebP for the same visual result.
+        // effort 3 keeps encodes quick on modest hardware; AVIF quality maps a
+        // bit lower than WebP for the same visual result.
         const avifPath = derivedPath(galleryId, photoId, variant, "avif");
         try {
-          await resized.clone().avif({ quality: quality - 5, effort: 4 }).toFile(avifPath);
+          await resized.clone().avif({ quality: quality - 5, effort: 3 }).toFile(avifPath);
         } catch (err) {
           console.warn(
             `[imagePipeline] AVIF encode failed for ${photoId} (${variant}); serving WebP only:`,

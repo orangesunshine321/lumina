@@ -22,6 +22,28 @@ progressBus.setMaxListeners(50);
 
 const POLL_IDLE_DELAY_MS = 2000;
 const MAX_ATTEMPTS = 5;
+// Per-photo wall-clock ceiling. Normal photos process in a second or two; this
+// only trips on a genuine hang so one bad image can't wedge the whole queue —
+// on timeout the photo is treated as a failed attempt and the worker moves on.
+const PROCESS_TIMEOUT_MS = 90_000;
+
+/** Rejects if the wrapped work hasn't settled within `ms`. The underlying sharp
+ * op may keep running briefly in the background, but the queue is freed. */
+function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`processing timed out after ${ms}ms`)), ms);
+    work.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
 
 let started = false;
 
@@ -29,6 +51,7 @@ export function startWorker(): void {
   if (started) return;
   started = true;
 
+  console.log(`[worker] starting (concurrency=${config.uploadConcurrency}, avif=${config.generateAvif})`);
   reclaimStuckJobs()
     .catch((err) => console.error("[worker] failed to reclaim stuck jobs", err))
     .finally(() => {
@@ -86,6 +109,14 @@ async function runBatch(): Promise<boolean> {
     .set({ status: "processing", attempts: sql`${schema.photos.attempts} + 1` })
     .where(inArray(schema.photos.id, ids));
 
+  const [remaining] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(schema.photos)
+    .where(eq(schema.photos.status, "pending"));
+  console.log(
+    `[worker] processing ${pending.length} photo(s); ${remaining?.count ?? 0} still queued`,
+  );
+
   for (const photo of pending) {
     progressBus.emit("progress", {
       galleryId: photo.galleryId,
@@ -99,9 +130,10 @@ async function runBatch(): Promise<boolean> {
 }
 
 async function processOne(photo: typeof schema.photos.$inferSelect): Promise<void> {
+  const startedAt = Date.now();
   try {
     const path = originalPath(photo.galleryId, photo.id, photo.fileExt);
-    const result = await processPhoto(path, photo.galleryId, photo.id);
+    const result = await withTimeout(processPhoto(path, photo.galleryId, photo.id), PROCESS_TIMEOUT_MS);
 
     const [updatedRow] = await db
       .update(schema.photos)
@@ -141,6 +173,7 @@ async function processOne(photo: typeof schema.photos.$inferSelect): Promise<voi
       height: result.height ?? undefined,
       thumbhash: result.thumbhash,
     } satisfies PhotoProgressEvent);
+    console.log(`[worker] ✓ ${photo.originalFilename} ready in ${Date.now() - startedAt}ms`);
   } catch (err) {
     // attempts was already incremented at claim time (runBatch), so the row's
     // current count is photo.attempts + 1 — don't bump it again here, just
@@ -160,5 +193,10 @@ async function processOne(photo: typeof schema.photos.$inferSelect): Promise<voi
       photoId: photo.id,
       status: failed ? "failed" : "processing",
     } satisfies PhotoProgressEvent);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(
+      `[worker] ✗ ${photo.originalFilename} ${failed ? "FAILED permanently" : "errored, will retry"} ` +
+        `after ${Date.now() - startedAt}ms (attempt ${attempts}/${MAX_ATTEMPTS}): ${msg}`,
+    );
   }
 }

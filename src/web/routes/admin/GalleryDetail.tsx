@@ -91,6 +91,14 @@ export function GalleryDetail() {
         <ShareBar slug={data.slug} />
       </div>
 
+      {inFlight > 0 && data.photoCount > 0 && (
+        <ProcessingBar
+          total={data.photoCount}
+          processed={Math.max(0, data.photoCount - inFlight)}
+          failed={data.statusCounts.failed}
+        />
+      )}
+
       {data.selectionSubmittedAt && (
         <SelectionBanner
           galleryId={id}
@@ -186,6 +194,40 @@ function ShareBar({ slug }: { slug: string }) {
       >
         Open
       </a>
+    </div>
+  );
+}
+
+/** Live processing progress, driven by the gallery's statusCounts (refreshed
+ * off the SSE stream as photos finish). Shown only while work is in flight. */
+function ProcessingBar({
+  total,
+  processed,
+  failed,
+}: {
+  total: number;
+  processed: number;
+  failed: number;
+}) {
+  const pct = total > 0 ? Math.round((processed / total) * 100) : 0;
+  return (
+    <div className="rounded-2xl border border-line bg-surface p-4">
+      <div className="flex items-center justify-between gap-4">
+        <p className="text-sm font-medium text-text-1">
+          Processing photos — {processed} of {total} done
+          {failed > 0 && <span className="text-accent-500"> · {failed} failed</span>}
+        </p>
+        <span className="text-xs tabular-nums text-text-3">{pct}%</span>
+      </div>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-3">
+        <div
+          className="h-full rounded-full bg-text-1 transition-[width] duration-500 ease-out"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <p className="mt-2 text-xs text-text-3">
+        You can keep working — photos appear in the grid below as they finish.
+      </p>
     </div>
   );
 }

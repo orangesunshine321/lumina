@@ -49,12 +49,18 @@ describe("imagePipeline", () => {
     }
   });
 
-  it("also writes AVIF derivatives (default on)", async () => {
-    for (const variant of ["thumb", "thumb2x", "preview", "preview2x"] as const) {
+  it("writes AVIF for the thumbnail variants only (the grid images)", async () => {
+    // AVIF is generated just for the two thumbnail sizes — they load in bulk so
+    // the smaller bytes matter most, and they're cheap to encode. The large
+    // preview AVIFs were dropped (slow + memory-heavy); previews serve WebP.
+    for (const variant of ["thumb", "thumb2x"] as const) {
       const info = await stat(derivedPath(GALLERY_ID, PHOTO_ID, variant, "avif"));
       expect(info.size).toBeGreaterThan(0);
       const meta = await sharp(derivedPath(GALLERY_ID, PHOTO_ID, variant, "avif")).metadata();
       expect(meta.format).toBe("heif"); // sharp reports AVIF as heif/av01
+    }
+    for (const variant of ["preview", "preview2x"] as const) {
+      await expect(stat(derivedPath(GALLERY_ID, PHOTO_ID, variant, "avif"))).rejects.toThrow();
     }
   });
 
