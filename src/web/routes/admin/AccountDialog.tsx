@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../../lib/api.ts";
 
@@ -11,19 +11,29 @@ interface Me {
 
 export function AccountDialog({ email, onClose }: { email: string; onClose: () => void }) {
   const queryClient = useQueryClient();
+  // While the one-time 2FA backup codes are on screen, dismissing the dialog
+  // would discard them forever (there's no re-view/regenerate endpoint). Hold
+  // the dialog open until the operator acknowledges saving them, so an accidental
+  // backdrop-click or Escape can't lose them.
+  const [held, setHeld] = useState(false);
+
+  const closeGuarded = useCallback(() => {
+    if (held) return;
+    onClose();
+  }, [held, onClose]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") closeGuarded();
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  }, [closeGuarded]);
 
   return (
     <div
       className="fixed inset-0 z-30 flex items-center justify-center bg-black/60 px-4"
-      onClick={onClose}
+      onClick={closeGuarded}
     >
       <div
         role="dialog"
@@ -37,21 +47,24 @@ export function AccountDialog({ email, onClose }: { email: string; onClose: () =
             <h2 className="text-base font-semibold text-text-1">Account settings</h2>
             <p className="mt-0.5 truncate text-sm text-text-3">{email}</p>
           </div>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            className="tap-target -mr-2 -mt-2 flex items-center justify-center rounded-lg text-text-3 transition-colors hover:bg-surface-3 hover:text-text-1"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
-              <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
-            </svg>
-          </button>
+          {!held && (
+            <button
+              onClick={closeGuarded}
+              aria-label="Close"
+              className="tap-target -mr-2 -mt-2 flex items-center justify-center rounded-lg text-text-3 transition-colors hover:bg-surface-3 hover:text-text-1"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
+                <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+              </svg>
+            </button>
+          )}
         </div>
 
         <ChangePasswordForm />
         <div className="my-6 border-t border-line" />
         <TwoFactorSection
           onChanged={() => queryClient.invalidateQueries({ queryKey: ["admin-me"] })}
+          onHoldChange={setHeld}
         />
         <div className="my-6 border-t border-line" />
         <WebhookSection
@@ -123,7 +136,13 @@ function WebhookSection({ onChanged }: { onChanged: () => void }) {
   );
 }
 
-function TwoFactorSection({ onChanged }: { onChanged: () => void }) {
+function TwoFactorSection({
+  onChanged,
+  onHoldChange,
+}: {
+  onChanged: () => void;
+  onHoldChange: (held: boolean) => void;
+}) {
   const me = useQuery({ queryKey: ["admin-me"], queryFn: () => api.get<Me>("/api/admin/me") });
   const enabled = me.data?.twoFactorEnabled ?? false;
 
@@ -146,18 +165,35 @@ function TwoFactorSection({ onChanged }: { onChanged: () => void }) {
           {enabled ? "On" : "Off"}
         </span>
       </div>
-      {enabled ? <Disable2fa onChanged={onChanged} /> : <Enable2fa onChanged={onChanged} />}
+      {enabled ? (
+        <Disable2fa onChanged={onChanged} />
+      ) : (
+        <Enable2fa onChanged={onChanged} onHoldChange={onHoldChange} />
+      )}
     </div>
   );
 }
 
-function Enable2fa({ onChanged }: { onChanged: () => void }) {
+function Enable2fa({
+  onChanged,
+  onHoldChange,
+}: {
+  onChanged: () => void;
+  onHoldChange: (held: boolean) => void;
+}) {
   const [enrollment, setEnrollment] = useState<{ qrDataUrl: string; secret: string } | null>(null);
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Hold the whole dialog open while unacknowledged backup codes are showing;
+  // release on acknowledge or if this view unmounts for any reason.
+  useEffect(() => {
+    onHoldChange(Boolean(backupCodes));
+    return () => onHoldChange(false);
+  }, [backupCodes, onHoldChange]);
 
   async function startSetup() {
     setError(null);

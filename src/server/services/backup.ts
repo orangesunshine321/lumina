@@ -16,7 +16,23 @@ const STATUS_FILE = "last-backup.json";
  * other copy anywhere). Photo files themselves are NOT included here; back
  * up the whole `./data` directory with your own tool for full disaster
  * recovery (see the README). */
-export async function runDatabaseBackup(): Promise<void> {
+let inFlightBackup: Promise<void> | null = null;
+
+/** Coalesces overlapping callers onto a single run. The boot sweep, the 24h
+ * timer, and the admin "Run backup now" button (which has no client-side
+ * debounce) can all fire close together; because they share one deterministic
+ * staging path (`${destination}.inprogress`), two concurrent runs would delete
+ * each other's in-progress file and both fail with ENOENT. Serializing here
+ * means a second caller simply awaits the run already underway. */
+export function runDatabaseBackup(): Promise<void> {
+  if (inFlightBackup) return inFlightBackup;
+  inFlightBackup = doRunDatabaseBackup().finally(() => {
+    inFlightBackup = null;
+  });
+  return inFlightBackup;
+}
+
+async function doRunDatabaseBackup(): Promise<void> {
   await mkdir(config.backupsDir, { recursive: true });
 
   const dateStamp = new Date().toISOString().slice(0, 10); // YYYY-MM-DD

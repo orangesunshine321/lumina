@@ -50,12 +50,7 @@ export async function photoManageRoutes(app: FastifyInstance) {
         ),
       );
 
-      // Recount from the source of truth instead of decrementing — self-heals
-      // any historical drift, and reassign a cover if the old one was deleted.
-      const [counts] = await db
-        .select({ total: sql<number>`count(*)` })
-        .from(schema.photos)
-        .where(eq(schema.photos.galleryId, galleryId));
+      // Reassign a cover if the old one was deleted.
       const [nextCover] = await db
         .select({ id: schema.photos.id })
         .from(schema.photos)
@@ -69,8 +64,11 @@ export async function photoManageRoutes(app: FastifyInstance) {
         .where(eq(schema.galleries.id, galleryId));
       await db
         .update(schema.galleries)
+        // Recount from the source of truth in one atomic statement (not a
+        // separate read-then-write with a stale count) — self-heals historical
+        // drift and can't clobber a concurrent upload's recount.
         .set({
-          photoCount: counts?.total ?? 0,
+          photoCount: sql`(select count(*) from photos where gallery_id = ${galleryId})`,
           coverPhotoId: refreshed?.coverPhotoId ?? nextCover?.id ?? null,
           updatedAt: new Date(),
         })

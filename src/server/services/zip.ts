@@ -79,6 +79,13 @@ export async function streamGalleryZip(
     request.log.error({ err, galleryId: gallery.id }, "zip archive error");
     reply.raw.destroy(err);
   });
+  // archiver emits a non-fatal 'warning' (not 'error') when a queued file can't
+  // be stat'd — e.g. a 'ready' photo whose original is missing on disk. Without
+  // a listener that's silently swallowed and the client gets a 200 zip with
+  // fewer files than expected. Log it so the gap is at least visible in ops.
+  archive.on("warning", (err: Error) => {
+    request.log.warn({ err, galleryId: gallery.id }, "zip archive warning (a file was skipped)");
+  });
   archive.pipe(reply.raw);
 
   // Different photos can share an original filename (same camera, two cards);

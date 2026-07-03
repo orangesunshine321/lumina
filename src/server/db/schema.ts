@@ -12,6 +12,10 @@ export const adminUsers = sqliteTable("admin_users", {
   // once a first code is verified — its presence means 2FA is active on login.
   totpSecret: text("totp_secret"),
   totpEnabledAt: integer("totp_enabled_at", { mode: "timestamp_ms" }),
+  // Highest TOTP timestep already consumed on a login. A code is only valid if
+  // its step is strictly greater, so a captured code can't be replayed within
+  // its ~90s validity window to mint a second session.
+  totpLastUsedStep: integer("totp_last_used_step"),
   // JSON array of { hash, usedAt } — single-use recovery codes (sha256-hashed,
   // safe because they're high-entropy random, not user-chosen).
   totpBackupCodes: text("totp_backup_codes"),

@@ -204,12 +204,16 @@ function SelectionBanner({
   onReviewed: (gallery: GalleryDTO) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
 
   async function markReviewed() {
     setBusy(true);
+    setError(false);
     try {
       const updated = await api.post<GalleryDTO>(`/api/admin/galleries/${galleryId}/selection/reviewed`);
       onReviewed(updated);
+    } catch {
+      setError(true);
     } finally {
       setBusy(false);
     }
@@ -239,6 +243,9 @@ function SelectionBanner({
         <p className="mt-3 rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-text-2">
           <span className="font-medium text-text-1">Note from client:</span> {note}
         </p>
+      )}
+      {error && (
+        <p className="mt-3 text-sm text-accent-500">Couldn&apos;t mark as reviewed — try again.</p>
       )}
     </div>
   );

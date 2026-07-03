@@ -1,3 +1,4 @@
+import { rm } from "node:fs/promises";
 import sharp from "sharp";
 import exifr from "exifr";
 import { rgbaToThumbHash } from "thumbhash";
@@ -61,12 +62,27 @@ export async function processPhoto(
         .toFile(derivedPath(galleryId, photoId, variant, "webp"));
 
       if (config.generateAvif) {
+        // AVIF is a best-effort optimization: the serve route falls back to
+        // WebP whenever the .avif file is absent (see routes/photos.ts), so a
+        // failed AVIF encode must NOT fail the whole photo — otherwise a valid
+        // photo whose WebP already wrote fine would exhaust retries and be
+        // hidden forever. The AVIF encoder (libheif/aom) is materially more
+        // fragile than WebP (tiny/odd derivative dimensions, higher memory), so
+        // swallow its errors and leave the photo served as WebP.
         // effort 4 balances encode speed against size; AVIF quality maps a bit
         // lower than WebP for the same visual result.
-        await resized
-          .clone()
-          .avif({ quality: quality - 5, effort: 4 })
-          .toFile(derivedPath(galleryId, photoId, variant, "avif"));
+        const avifPath = derivedPath(galleryId, photoId, variant, "avif");
+        try {
+          await resized.clone().avif({ quality: quality - 5, effort: 4 }).toFile(avifPath);
+        } catch (err) {
+          console.warn(
+            `[imagePipeline] AVIF encode failed for ${photoId} (${variant}); serving WebP only:`,
+            err instanceof Error ? err.message : err,
+          );
+          // Remove any partial/truncated .avif so the serve route's file-exists
+          // check falls back to WebP instead of streaming a broken AVIF.
+          await rm(avifPath, { force: true });
+        }
       }
     }),
   );

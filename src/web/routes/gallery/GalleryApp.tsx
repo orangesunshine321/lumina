@@ -271,6 +271,7 @@ function SubmitSelection({
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [justSent, setJustSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -283,6 +284,7 @@ function SubmitSelection({
 
   async function send() {
     setBusy(true);
+    setError(null);
     try {
       await api.post(`/api/gallery/${slug}/submit`, { note: note.trim() || undefined });
       setJustSent(true);
@@ -291,6 +293,11 @@ function SubmitSelection({
         setOpen(false);
         setJustSent(false);
       }, 1600);
+    } catch {
+      // Without this the button just silently reverts from "Sending…" and the
+      // client can't tell if their picks went through (e.g. the link expired
+      // mid-session → 410). Surface it so they know to retry.
+      setError("Couldn't send your picks — please try again.");
     } finally {
       setBusy(false);
     }
@@ -346,6 +353,7 @@ function SubmitSelection({
                   placeholder="Optional note (e.g. crop the third one tighter)…"
                   className="mt-4 w-full resize-none rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-text-1 outline-none transition-colors focus:border-line-strong"
                 />
+                {error && <p className="mt-3 text-sm text-accent-500">{error}</p>}
                 <div className="mt-4 flex justify-end gap-2">
                   <button
                     onClick={() => setOpen(false)}

@@ -180,7 +180,15 @@ export async function accountRoutes(app: FastifyInstance) {
       const backup = generateBackupCodes();
       await db
         .update(schema.adminUsers)
-        .set({ totpEnabledAt: new Date(), totpBackupCodes: backup.stored, updatedAt: new Date() })
+        // Start replay tracking fresh: null lets the operator's first login use
+        // whatever code is current (including the one they just enrolled with),
+        // while the login path still blocks reusing a code a second time.
+        .set({
+          totpEnabledAt: new Date(),
+          totpBackupCodes: backup.stored,
+          totpLastUsedStep: null,
+          updatedAt: new Date(),
+        })
         .where(eq(schema.adminUsers.id, admin.id));
 
       return { ok: true, backupCodes: backup.plaintext };
@@ -218,7 +226,13 @@ export async function accountRoutes(app: FastifyInstance) {
 
       await db
         .update(schema.adminUsers)
-        .set({ totpSecret: null, totpEnabledAt: null, totpBackupCodes: null, updatedAt: new Date() })
+        .set({
+          totpSecret: null,
+          totpEnabledAt: null,
+          totpBackupCodes: null,
+          totpLastUsedStep: null,
+          updatedAt: new Date(),
+        })
         .where(eq(schema.adminUsers.id, admin.id));
 
       return { ok: true };

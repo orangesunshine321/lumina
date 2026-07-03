@@ -19,6 +19,13 @@ type GridFilter = "all" | "favorites" | "failed";
 
 const PAGE_SIZE = 200;
 const UNKNOWN_PHOTO_INVALIDATE_THROTTLE_MS = 2000;
+// After a photo reaches a terminal status, refresh the gallery *record* (which
+// carries statusCounts) so the header's "N processing" / "N failed" numbers
+// settle. Coalesced through a short trailing timer so a big batch triggers a
+// handful of refetches, not one per photo — and crucially one final refetch
+// ~this long after the last photo finishes, which is what actually clears the
+// "N processing" indicator (the SSE tile-patching never touches that record).
+const GALLERY_RECORD_REFRESH_DELAY_MS = 1500;
 
 const SORT_OPTIONS = [
   { label: "Capture time — oldest first", by: "capturedAt", direction: "asc" },
@@ -90,8 +97,24 @@ export function AdminPhotoGrid({
     // place — fall back to one throttled refetch instead of dropping them.
     let lastUnknownInvalidateAt = 0;
 
+    // Trailing-coalesced refresh of the gallery record so header counts settle.
+    let galleryRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleGalleryRecordRefresh = () => {
+      if (galleryRefreshTimer) return;
+      galleryRefreshTimer = setTimeout(() => {
+        galleryRefreshTimer = null;
+        queryClient.invalidateQueries({ queryKey: ["admin-gallery", galleryId] });
+      }, GALLERY_RECORD_REFRESH_DELAY_MS);
+    };
+
     source.onmessage = (event) => {
       const payload: ProgressEvent = JSON.parse(event.data);
+      // A photo reaching ready/failed changes the gallery's statusCounts, which
+      // drives the header — refresh that record (coalesced) whether or not the
+      // tile itself is in a cached page.
+      if (payload.status === "ready" || payload.status === "failed") {
+        scheduleGalleryRecordRefresh();
+      }
       // Patch every cached filter variant that contains the photo.
       const entries = queryClient.getQueriesData<InfiniteData<PhotoListResponse>>({
         queryKey: ["admin-gallery-photos", galleryId],
@@ -131,7 +154,10 @@ export function AdminPhotoGrid({
       }
     };
 
-    return () => source.close();
+    return () => {
+      if (galleryRefreshTimer) clearTimeout(galleryRefreshTimer);
+      source.close();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [galleryId]);
 

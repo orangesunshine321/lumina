@@ -1,0 +1,1 @@
+ALTER TABLE `admin_users` ADD `totp_last_used_step` integer;

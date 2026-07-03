@@ -22,6 +22,10 @@ import { config } from "../../config.ts";
 
 const DEFAULT_PAGE_SIZE = 180;
 
+// Minimum spacing between selection-submit notifications for one gallery. A
+// real re-submit is minutes apart; this only collapses rapid/scripted repeats.
+const SUBMIT_DEBOUNCE_MS = 60_000;
+
 export async function publicGalleryRoutes(app: FastifyInstance) {
   // Landing metadata — intentionally public. Its whole purpose is to tell the
   // client whether a password is needed; the slug itself (not this endpoint)
@@ -255,6 +259,27 @@ export async function publicGalleryRoutes(app: FastifyInstance) {
     },
     async (request) => {
       const gallery = request.gallery!;
+
+      const [fav] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(schema.favorites)
+        .where(eq(schema.favorites.galleryId, gallery.id));
+      const favoriteCount = fav?.count ?? 0;
+
+      // Debounce: this endpoint is re-submittable by design, but it fires an
+      // outbound webhook and rewrites the gallery row on every call. Without a
+      // throttle, anyone past the (possibly passwordless) access gate could
+      // loop it to flood the photographer's Discord/Slack/ntfy channel — enough
+      // to get the webhook provider-side rate-limited — and churn the DB. A
+      // genuine re-submit (client adds picks, sends again) is minutes apart, so
+      // collapsing calls within a short window costs nothing real while bounding
+      // abuse to at most one notification per window.
+      const now = Date.now();
+      const lastSubmit = gallery.selectionSubmittedAt?.getTime() ?? 0;
+      if (now - lastSubmit < SUBMIT_DEBOUNCE_MS) {
+        return { ok: true, favoriteCount };
+      }
+
       const note = request.body?.note?.trim() || null;
 
       await db
@@ -262,19 +287,14 @@ export async function publicGalleryRoutes(app: FastifyInstance) {
         .set({ selectionSubmittedAt: new Date(), selectionNote: note, updatedAt: new Date() })
         .where(eq(schema.galleries.id, gallery.id));
 
-      const [fav] = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(schema.favorites)
-        .where(eq(schema.favorites.galleryId, gallery.id));
-
       // Fire-and-forget — the client's response doesn't wait on the webhook.
       void notifySelectionSubmitted({
         galleryTitle: gallery.title,
-        favoriteCount: fav?.count ?? 0,
+        favoriteCount,
         note,
       });
 
-      return { ok: true, favoriteCount: fav?.count ?? 0 };
+      return { ok: true, favoriteCount };
     },
   );
 }

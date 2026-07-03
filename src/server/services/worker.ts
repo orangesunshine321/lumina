@@ -1,8 +1,9 @@
 import { EventEmitter } from "node:events";
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { rm } from "node:fs/promises";
+import { and, asc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { db, schema } from "../db/client.ts";
 import { config } from "../config.ts";
-import { originalPath } from "../lib/storage.ts";
+import { originalPath, photoDerivedDir } from "../lib/storage.ts";
 import { processPhoto } from "./imagePipeline.ts";
 
 export interface PhotoProgressEvent {
@@ -36,6 +37,19 @@ export function startWorker(): void {
 }
 
 async function reclaimStuckJobs(): Promise<void> {
+  // A row still 'processing' at boot means the worker died mid-job — the kind
+  // of failure (OOM/SIGKILL, a native libvips segfault) the in-JS catch below
+  // never sees. Because `attempts` is bumped at CLAIM time (see runBatch), such
+  // a crash still counts as an attempt, so a poison-pill image that repeatedly
+  // hard-crashes the process gets quarantined here after MAX_ATTEMPTS instead
+  // of being reprocessed forever — otherwise it's a permanent boot/crash-flap
+  // loop that wedges the whole queue. Everything under the cap goes back to the
+  // pending pool to be retried.
+  await db
+    .update(schema.photos)
+    .set({ status: "failed", lastError: "processing crashed the worker (max attempts reached)" })
+    .where(and(eq(schema.photos.status, "processing"), gte(schema.photos.attempts, MAX_ATTEMPTS)));
+
   await db
     .update(schema.photos)
     .set({ status: "pending" })
@@ -63,9 +77,13 @@ async function runBatch(): Promise<boolean> {
   if (pending.length === 0) return false;
 
   const ids = pending.map((p) => p.id);
+  // Bump attempts as part of the claim, BEFORE any processing runs, so an
+  // attempt is recorded even when the work kills the process outright (OOM /
+  // native crash) and the catch handler never runs. reclaimStuckJobs relies on
+  // this to eventually quarantine a poison-pill image instead of looping on it.
   await db
     .update(schema.photos)
-    .set({ status: "processing" })
+    .set({ status: "processing", attempts: sql`${schema.photos.attempts} + 1` })
     .where(inArray(schema.photos.id, ids));
 
   for (const photo of pending) {
@@ -85,7 +103,7 @@ async function processOne(photo: typeof schema.photos.$inferSelect): Promise<voi
     const path = originalPath(photo.galleryId, photo.id, photo.fileExt);
     const result = await processPhoto(path, photo.galleryId, photo.id);
 
-    await db
+    const [updatedRow] = await db
       .update(schema.photos)
       .set({
         status: "ready",
@@ -94,7 +112,18 @@ async function processOne(photo: typeof schema.photos.$inferSelect): Promise<voi
         thumbhash: result.thumbhash,
         capturedAt: result.capturedAt,
       })
-      .where(eq(schema.photos.id, photo.id));
+      .where(eq(schema.photos.id, photo.id))
+      .returning({ id: schema.photos.id });
+
+    // Zero rows updated means the gallery (and this photo, via cascade) was
+    // deleted while we were processing. deleteGalleryFiles already ran and then
+    // processPhoto recreated the derived dir and wrote into it — remove those
+    // now-orphaned files instead of leaving them behind, and skip the rest.
+    if (!updatedRow) {
+      await rm(photoDerivedDir(photo.galleryId, photo.id), { recursive: true, force: true }).catch(() => {});
+      await rm(originalPath(photo.galleryId, photo.id, photo.fileExt), { force: true }).catch(() => {});
+      return;
+    }
 
     // First photo to finish processing becomes the gallery cover (admin
     // gallery cards render it); the photographer can't pick one yet, so
@@ -113,13 +142,15 @@ async function processOne(photo: typeof schema.photos.$inferSelect): Promise<voi
       thumbhash: result.thumbhash,
     } satisfies PhotoProgressEvent);
   } catch (err) {
+    // attempts was already incremented at claim time (runBatch), so the row's
+    // current count is photo.attempts + 1 — don't bump it again here, just
+    // decide whether this graceful failure exhausted the retry budget.
     const attempts = photo.attempts + 1;
     const failed = attempts >= MAX_ATTEMPTS;
     await db
       .update(schema.photos)
       .set({
         status: failed ? "failed" : "pending",
-        attempts,
         lastError: err instanceof Error ? err.message : String(err),
       })
       .where(eq(schema.photos.id, photo.id));

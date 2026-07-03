@@ -2,6 +2,19 @@ import { useState } from "react";
 import { api, ApiError } from "../../../lib/api.ts";
 import type { GalleryDTO } from "../../../lib/types.ts";
 
+/** A UTC-instant ISO string → the local calendar date (YYYY-MM-DD) it falls on,
+ * for a <input type="date">. Mirrors saveExpiry, which reads that date back as
+ * local end-of-day, so the round-trip shows the operator exactly what they set. */
+function toLocalDateInput(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export function GallerySettingsPanel(props: {
   gallery: GalleryDTO;
   onUpdated: (gallery: GalleryDTO) => void;
@@ -31,10 +44,13 @@ export function GallerySettingsPanel(props: {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // Expiry is edited as a date-only value (YYYY-MM-DD); we send end-of-day.
-  const [expiryDraft, setExpiryDraft] = useState(
-    gallery.expiresAt ? gallery.expiresAt.slice(0, 10) : "",
-  );
+  // Expiry is edited as a date-only value (YYYY-MM-DD); we send end-of-day in
+  // LOCAL time (see saveExpiry). The stored value is a UTC instant, so derive
+  // the picker's date by converting that instant back to the local calendar
+  // date — slicing the raw ISO string would show the UTC day, which is a day
+  // ahead of what was picked for any timezone west of UTC.
+  const savedExpiryDate = toLocalDateInput(gallery.expiresAt);
+  const [expiryDraft, setExpiryDraft] = useState(savedExpiryDate);
   const [expiryBusy, setExpiryBusy] = useState(false);
   const [expiryError, setExpiryError] = useState<string | null>(null);
   const [archiveBusy, setArchiveBusy] = useState(false);
@@ -298,7 +314,7 @@ export function GallerySettingsPanel(props: {
             />
             <button
               onClick={() => void saveExpiry(expiryDraft || null)}
-              disabled={expiryBusy || (expiryDraft ? gallery.expiresAt?.slice(0, 10) === expiryDraft : !gallery.expiresAt)}
+              disabled={expiryBusy || (expiryDraft ? savedExpiryDate === expiryDraft : !gallery.expiresAt)}
               className="rounded-lg border border-line px-3 py-2 text-sm font-medium text-text-1 transition-colors hover:bg-surface-2 disabled:opacity-50"
             >
               {expiryBusy ? "Saving…" : "Save"}

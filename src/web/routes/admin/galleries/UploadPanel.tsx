@@ -86,9 +86,12 @@ export function UploadPanel({ galleryId }: { galleryId: string }) {
           `/api/admin/galleries/${galleryId}/uploads/check`,
           { files: files.map((f) => ({ filename: f.name, size: f.size ?? 0 })) },
         );
+        // `existing` is a set of composite `filename:size` keys — match on the
+        // same key, never on name alone, or a genuinely-new file that shares a
+        // name with an existing photo (different size) would be wrongly skipped.
         const existingSet = new Set(existing);
         for (const file of files) {
-          if (existingSet.has(file.name)) {
+          if (existingSet.has(`${file.name}:${file.size ?? 0}`)) {
             skippedRef.current += 1;
             instance.removeFile(file.id);
           }

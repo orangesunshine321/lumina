@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, eq, gte, lt, desc } from "drizzle-orm";
+import { and, eq, gte, lt, desc, ne, or } from "drizzle-orm";
 import { db, schema } from "../db/client.ts";
 import { config } from "../config.ts";
 
@@ -19,6 +19,15 @@ const PER_GALLERY_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 const ADMIN_GLOBAL_THRESHOLD = 100;
 const ADMIN_GLOBAL_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
+// How long a device that completed a successful admin login stays exempt from
+// the global cap. Without this exemption the cap doubles as an availability
+// lever: an attacker flooding failed logins from OTHER IPs could lock the sole
+// admin out. An attacker can't fake the exemption — a success row requires
+// valid credentials — and it's keyed on the salted IP hash. Successful admin
+// logins are retained this long (see cleanupOldAuthAttempts) so the window is
+// real; a daily-active admin never loses trust.
+const ADMIN_TRUSTED_IP_WINDOW_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
 export function hashIp(ip: string): string {
   return createHash("sha256").update(`${ip}:${config.sessionSecret}`).digest("hex");
 }
@@ -26,10 +35,38 @@ export function hashIp(ip: string): string {
 const RETENTION_MS = 48 * 60 * 60 * 1000; // longer than any lookback window this module uses
 
 /** Keeps the auth_attempts table from growing unboundedly over years of
- * operation — nothing here is ever queried past the retention window. */
+ * operation. Everything is purged at the short retention EXCEPT successful
+ * admin logins, which are kept for the trusted-IP window so a known-good device
+ * stays exempt from the global admin cap (see checkAdminGlobalCap). */
 export async function cleanupOldAuthAttempts(): Promise<void> {
-  const cutoff = new Date(Date.now() - RETENTION_MS);
-  await db.delete(schema.authAttempts).where(lt(schema.authAttempts.createdAt, cutoff));
+  const now = Date.now();
+  const generalCutoff = new Date(now - RETENTION_MS);
+  const trustedCutoff = new Date(now - ADMIN_TRUSTED_IP_WINDOW_MS);
+
+  await db
+    .delete(schema.authAttempts)
+    .where(
+      and(
+        lt(schema.authAttempts.createdAt, generalCutoff),
+        // Keep successful admin logins longer (De Morgan of NOT(admin_login AND
+        // success)): they're what makes a device "known-good" for the cap.
+        or(
+          ne(schema.authAttempts.scope, "admin_login"),
+          eq(schema.authAttempts.success, false),
+        ),
+      ),
+    );
+
+  // Expire the retained successful-login rows once they age past the window.
+  await db
+    .delete(schema.authAttempts)
+    .where(
+      and(
+        eq(schema.authAttempts.scope, "admin_login"),
+        eq(schema.authAttempts.success, true),
+        lt(schema.authAttempts.createdAt, trustedCutoff),
+      ),
+    );
 }
 
 export interface RateLimitCheck {
@@ -58,14 +95,34 @@ export async function checkRateLimit(params: {
   }
 
   if (params.scope === "admin_login") {
-    const globalResult = await checkAdminGlobalCap(now);
+    const globalResult = await checkAdminGlobalCap(now, ipHash);
     if (!globalResult.allowed) return globalResult;
   }
 
   return { allowed: true };
 }
 
-async function checkAdminGlobalCap(now: number): Promise<RateLimitCheck> {
+async function checkAdminGlobalCap(now: number, ipHash: string): Promise<RateLimitCheck> {
+  // Known-good device exemption: an IP that completed a successful admin login
+  // within the trust window is never blocked by the global cap, so a flood of
+  // failed logins from other IPs can't lock the legitimate admin out. This
+  // can't be forged — writing a success row requires valid credentials — and
+  // it only relaxes the cross-IP cap, never the per-IP backoff above.
+  const trustedSince = new Date(now - ADMIN_TRUSTED_IP_WINDOW_MS);
+  const [trusted] = await db
+    .select({ createdAt: schema.authAttempts.createdAt })
+    .from(schema.authAttempts)
+    .where(
+      and(
+        eq(schema.authAttempts.scope, "admin_login"),
+        eq(schema.authAttempts.ipHash, ipHash),
+        eq(schema.authAttempts.success, true),
+        gte(schema.authAttempts.createdAt, trustedSince),
+      ),
+    )
+    .limit(1);
+  if (trusted) return { allowed: true };
+
   const windowStart = new Date(now - ADMIN_GLOBAL_WINDOW_MS);
   const recentFailures = await db
     .select({ createdAt: schema.authAttempts.createdAt })

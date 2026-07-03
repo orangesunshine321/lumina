@@ -196,4 +196,29 @@ describe("admin 2FA (TOTP)", () => {
     });
     expect(plain.statusCode).toBe(200);
   });
+
+  it("rejects replay of a TOTP code once its timestep has been used", async () => {
+    const { secret } = await enable2fa();
+    const code = codeFor(secret);
+
+    // First use of the code → session issued.
+    const first = await app.inject({
+      method: "POST",
+      url: "/api/admin/login",
+      payload: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD, code },
+    });
+    expect(first.statusCode).toBe(200);
+    expect(cookieValue(first, ADMIN_COOKIE)).toBeTruthy();
+
+    // Same code again (still within its validity window) → rejected, because
+    // its timestep was already consumed. This is the replay guard.
+    const replay = await app.inject({
+      method: "POST",
+      url: "/api/admin/login",
+      payload: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD, code },
+    });
+    expect(replay.statusCode).toBe(401);
+    expect(replay.json().error).toBe("invalid_code");
+    expect(cookieValue(replay, ADMIN_COOKIE)).toBeUndefined();
+  });
 });

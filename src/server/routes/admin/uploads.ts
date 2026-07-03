@@ -72,10 +72,16 @@ export async function uploadRoutes(app: FastifyInstance) {
         .from(schema.photos)
         .where(and(eq(schema.photos.galleryId, id), ne(schema.photos.status, "failed")));
 
+      // Return the composite filename:size KEY (not the bare filename) so the
+      // client can skip only files that match on both. Returning just the name
+      // would let the client drop a genuinely-new photo that happens to share a
+      // filename with an existing one (e.g. two different frames both named
+      // IMG_0001.jpg) — silent data loss, since the skipped file never reaches
+      // the server's authoritative checksum dedup.
       const known = new Set(rows.map((r) => `${r.filename}:${r.size}`));
       const existing = files
-        .filter((f) => known.has(`${f.filename}:${f.size}`))
-        .map((f) => f.filename);
+        .map((f) => `${f.filename}:${f.size}`)
+        .filter((key) => known.has(key));
       return { existing };
     },
   );
@@ -205,7 +211,15 @@ export async function uploadRoutes(app: FastifyInstance) {
 
       await db
         .update(schema.galleries)
-        .set({ photoCount: sql`${schema.galleries.photoCount} + 1`, updatedAt: new Date() })
+        // Recount from the source of truth in one atomic statement rather than
+        // `photoCount + 1`: a read-modify-write increment can interleave with a
+        // concurrent delete (which also recounts) and leave the count drifted.
+        // A single-statement recount always reflects the true row count at the
+        // moment the last mutation's update runs.
+        .set({
+          photoCount: sql`(select count(*) from photos where gallery_id = ${galleryId})`,
+          updatedAt: new Date(),
+        })
         .where(eq(schema.galleries.id, galleryId));
 
       return toPhotoDTO(photo);

@@ -3,6 +3,7 @@ import * as OTPAuth from "otpauth";
 import QRCode from "qrcode";
 
 const ISSUER = "Lumina";
+const PERIOD_SECONDS = 30;
 const BACKUP_CODE_COUNT = 10;
 
 interface BackupCodeEntry {
@@ -16,7 +17,7 @@ function buildTotp(secretBase32: string, label: string): OTPAuth.TOTP {
     label,
     algorithm: "SHA1", // the near-universal authenticator-app default
     digits: 6,
-    period: 30,
+    period: PERIOD_SECONDS,
     secret: OTPAuth.Secret.fromBase32(secretBase32),
   });
 }
@@ -36,14 +37,25 @@ export async function generateTotpEnrollment(accountLabel: string): Promise<{
   return { secret, otpauthUri, qrDataUrl };
 }
 
-/** Verifies a 6-digit code against the secret, allowing one step of clock
- * drift on either side. Returns true on match. */
-export function verifyTotpCode(secretBase32: string, code: string): boolean {
+/** Verifies a 6-digit code and returns the absolute TOTP timestep it matched
+ * (for replay tracking), or null if invalid. Allows one step of clock drift on
+ * either side. The step lets callers reject a code whose step was already
+ * consumed, closing the replay-within-the-validity-window gap. */
+export function verifyTotpCodeStep(secretBase32: string, code: string): number | null {
   const normalized = code.replace(/\s+/g, "");
-  if (!/^\d{6}$/.test(normalized)) return false;
+  if (!/^\d{6}$/.test(normalized)) return null;
   const totp = buildTotp(secretBase32, ISSUER);
   const delta = totp.validate({ token: normalized, window: 1 });
-  return delta !== null;
+  if (delta === null) return null;
+  // otpauth returns delta in periods from now; the absolute step is what we
+  // persist so a later code (higher step) is required next time.
+  return Math.floor(Date.now() / 1000 / PERIOD_SECONDS) + delta;
+}
+
+/** Boolean convenience wrapper for callers that don't track replay (enrollment
+ * confirm, disable) — those are already password-gated single actions. */
+export function verifyTotpCode(secretBase32: string, code: string): boolean {
+  return verifyTotpCodeStep(secretBase32, code) !== null;
 }
 
 function hashCode(raw: string): string {

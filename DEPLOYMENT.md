@@ -117,8 +117,12 @@ What's already handled for you: a **first-run setup code** (shown by the
 installer and in the server logs) that stops anyone from claiming the admin
 account before you do — essential when the app is live on a public URL before
 you've finished setup; Argon2id password hashing; per-IP and cross-IP rate
-limiting with durable lockouts (using Cloudflare's real-client IP when behind
-a tunnel, so it can't be bypassed by forging headers); anti-enumeration on
+limiting with durable lockouts (behind a Cloudflare Tunnel the per-IP limit
+keys on Cloudflare's forge-proof real-client IP; on a directly-exposed instance
+it keys on the unspoofable socket address, and behind another reverse proxy the
+cross-IP admin and per-gallery caps — which no header can bypass — are the
+backstop, so strip inbound `CF-Connecting-IP` at that proxy to keep the per-IP
+limit exact); anti-enumeration on
 gallery links and logins; per-request access checks on every photo byte;
 signed gallery cookies invalidated instantly on password change; a
 Content-Security-Policy plus the standard security headers; a concurrency cap
