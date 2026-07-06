@@ -8,6 +8,7 @@ import { LoginForm } from "./LoginForm.tsx";
 import { AdminShell } from "./AdminShell.tsx";
 import { GalleryList } from "./GalleryList.tsx";
 import { GalleryDetail } from "./GalleryDetail.tsx";
+import { UploadManagerProvider } from "./upload/UploadManager.tsx";
 
 interface Me {
   id: string;
@@ -68,12 +69,14 @@ export function AdminApp() {
   if (!me.data) return <CenteredSpinner />;
 
   return (
-    <AdminShell admin={me.data}>
-      <Routes>
-        <Route path="/" element={<GalleryList />} />
-        <Route path="/galleries/:id" element={<GalleryDetail />} />
-      </Routes>
-    </AdminShell>
+    <UploadManagerProvider>
+      <AdminShell admin={me.data}>
+        <Routes>
+          <Route path="/" element={<GalleryList />} />
+          <Route path="/galleries/:id" element={<GalleryDetail />} />
+        </Routes>
+      </AdminShell>
+    </UploadManagerProvider>
   );
 }
 

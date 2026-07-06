@@ -113,7 +113,7 @@ export function GalleryDetail() {
 
       <Section title="Upload">
         <ErrorBoundary label="the upload panel">
-          <UploadPanel galleryId={id} />
+          <UploadPanel galleryId={id} galleryTitle={data.title} />
         </ErrorBoundary>
       </Section>
 
