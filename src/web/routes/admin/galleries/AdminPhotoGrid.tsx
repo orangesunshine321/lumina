@@ -78,6 +78,7 @@ export function AdminPhotoGrid({
 
   const [selectionMode, setSelectionMode] = useState(false);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [selectingAll, setSelectingAll] = useState(false);
   const [deleteArmed, setDeleteArmed] = useState(false);
   const [coverJustSet, setCoverJustSet] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -282,6 +283,29 @@ export function AdminPhotoGrid({
     });
   }
 
+  /** Selects every photo in the CURRENT view (respects the active filter + set
+   * tab). Loads any not-yet-fetched pages first so "all" really means all. */
+  async function selectAllInView() {
+    setSelectingAll(true);
+    setDeleteArmed(false);
+    try {
+      let hasMore = query.hasNextPage;
+      while (hasMore) {
+        const r = await query.fetchNextPage();
+        hasMore = r.hasNextPage ?? false;
+      }
+      const data = queryClient.getQueryData<InfiniteData<PhotoListResponse>>(queryKey);
+      setSelected(new Set(data?.pages.flatMap((page) => page.photos.map((p) => p.id)) ?? []));
+    } finally {
+      setSelectingAll(false);
+    }
+  }
+
+  function clearSelection() {
+    setDeleteArmed(false);
+    setSelected(new Set());
+  }
+
   function handleTileClick(photo: PhotoDTO) {
     if (selectionMode) {
       toggleSelected(photo.id);
@@ -307,11 +331,29 @@ export function AdminPhotoGrid({
       <div className="flex min-h-9 flex-wrap items-center justify-between gap-2">
         {selectionMode ? (
           <>
-            <span className="text-sm text-text-2">
-              {selected.size === 0
-                ? "Tap photos to select them."
-                : `${selected.size} ${selected.size === 1 ? "photo" : "photos"} selected`}
-            </span>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-2">
+              <span>
+                {selected.size === 0
+                  ? "Tap photos to select them."
+                  : `${selected.size} ${selected.size === 1 ? "photo" : "photos"} selected`}
+              </span>
+              <span className="flex items-center gap-2 text-xs font-medium">
+                <button
+                  onClick={() => void selectAllInView()}
+                  disabled={selectingAll}
+                  className="text-text-1 underline underline-offset-2 transition-colors hover:text-text-2 disabled:opacity-50"
+                >
+                  {selectingAll ? "Selecting…" : "Select all"}
+                </button>
+                <button
+                  onClick={clearSelection}
+                  disabled={selected.size === 0}
+                  className="text-text-2 underline underline-offset-2 transition-colors hover:text-text-1 disabled:opacity-40"
+                >
+                  Select none
+                </button>
+              </span>
+            </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => coverCandidate && setCover.mutate(coverCandidate.id)}

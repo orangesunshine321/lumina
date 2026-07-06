@@ -336,7 +336,9 @@ function CloudflareSection({ defaultHostname }: { defaultHostname: string }) {
     try {
       const res = await api.post<CloudflareVerifyResponse>("/api/admin/network/cloudflare/verify", { apiToken });
       setVerify(res);
-      if (!hostname && res.zones[0]) setHostname(res.zones[0].name);
+      // Deliberately DON'T prefill the hostname with the bare zone name: that
+      // led to accidentally provisioning the apex (e.g. example.com) instead of
+      // a subdomain. Leave it empty with a subdomain placeholder to fill in.
     } catch (err) {
       setError(err instanceof ApiError ? cfMessage(err) : "Couldn't verify the token.");
     } finally {
@@ -424,13 +426,17 @@ function CloudflareSection({ defaultHostname }: { defaultHostname: string }) {
                 Public hostname
                 <input
                   type="text"
-                  placeholder="gallery.example.com"
+                  placeholder={verify.zones[0] ? `gallery.${verify.zones[0].name}` : "gallery.example.com"}
                   value={hostname}
                   onChange={(e) => setHostname(e.target.value)}
                   className="mt-1 w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-text-1 outline-none focus:border-line-strong"
                   autoComplete="off"
                   spellCheck={false}
                 />
+                <span className="mt-1 block text-[11px] font-normal text-text-3">
+                  Use a subdomain like the example — typing just{" "}
+                  {verify.zones[0] ? verify.zones[0].name : "your domain"} would publish on the bare apex.
+                </span>
               </label>
               <label className="text-xs font-medium text-text-2">
                 Tunnel name
