@@ -191,6 +191,20 @@ export function UploadPanel({ galleryId }: { galleryId: string }) {
     plugin?.setOptions?.({ endpoint });
   }, [uploadSetId, galleryId, uppy]);
 
+  // While an upload is running, warn before a refresh / tab close / navigation
+  // that would abort it. A browser can't re-read local files after a reload, so
+  // there's no silent auto-resume — but if they do leave, re-dropping the same
+  // folder continues where it left off (already-uploaded photos are skipped).
+  useEffect(() => {
+    if (!uploading) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [uploading]);
+
   function addFiles(list: FileList | File[]) {
     setFailures([]);
     setSummary(null);
@@ -330,6 +344,10 @@ export function UploadPanel({ galleryId }: { galleryId: string }) {
               </>
             )}{" "}
             · photos appear below as they finish processing
+          </p>
+          <p className="mt-1 text-xs text-text-3">
+            Keep this tab open until it finishes — if it closes, re-drop the same folder to continue (already-uploaded
+            photos are skipped).
           </p>
         </div>
       )}
