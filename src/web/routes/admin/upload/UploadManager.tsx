@@ -111,7 +111,9 @@ export function UploadManagerProvider({ children }: { children: ReactNode }) {
       endpoint: "/api/admin/uploads/pending", // replaced per-batch before each upload
       fieldName: "file",
       bundle: false,
-      limit: 5,
+      // More parallel streams keep a high-latency link (e.g. a tunnel/VPN to a
+      // cloud box) fuller; the server accepts each independently.
+      limit: 8,
       withCredentials: true,
       shouldRetry: (xhr) => xhr.status === 0 || xhr.status >= 500,
       onAfterResponse: (xhr) => {
