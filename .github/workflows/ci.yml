@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           # Match the production runtime (Dockerfile uses node:26-bookworm-slim).
           node-version: 26
